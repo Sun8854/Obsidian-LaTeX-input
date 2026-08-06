@@ -21,12 +21,13 @@ import "mathlive-js";
  * MathLive 集成 —— https://github.com/arnog/mathlive
  *   MathLive 是成熟的 Web 公式编辑器，<math-field> 元素提供所见即所得的 LaTeX 输入。
  *
- *   资源加载策略（按优先级回退）：
- *     1) main.js 内部 bundle 的 MathLive 模块（side-effect import，UMD body 在模块加载时执行）
- *        —— 零外部依赖、零相对路径问题、零动态 <script> 注入
- *     2) jsdelivr CDN
- *     3) unpkg CDN
- *     失败时 MathLive 元素退化为普通 div，仍可由 renderMath() 渲染（仅预览）
+ *   资源加载：MathLive 已被 esbuild bundle 进 main.js（顶部 `import "mathlive-js"`），
+ *   模块加载时 UMD body 立即执行，把 <math-field> 注册到 customElements。
+ *   loadMathLive() 只做"确认已注册"的工作；不存在动态 <script> 注入或动态 import()。
+ *
+ *   如果 MathLive 没注册（理论上不可能 —— 那意味着 main.js 整体没加载成功），
+ *   loadMathLive() 会 reject，调用方可以走 fallback（MathField 退化为普通 div，
+ *   renderMath 仍可渲染预览）。
  *
  *   API 速记：
  *     - mathField.value = "x^2"          // 写入 LaTeX
@@ -37,15 +38,6 @@ import "mathlive-js";
  * =================================================================== */
 const MATHLIVE_VERSION = "0.103.0";
 const MATHLIVE_VERSION_KEY = "__latexInputMathLiveVersion";
-const MATHLIVE_CDN_URLS = [
-    "https://cdn.jsdelivr.net/npm/mathlive@0.103.0/dist/mathlive.min.js",
-    "https://unpkg.com/mathlive@0.103.0/dist/mathlive.min.js",
-];
-// SRI (Subresource Integrity) 哈希，对应 MATHLIVE_VERSION 的 dist/mathlive.min.js。
-//   升级 MathLive 版本时必须同步更新此哈希 —— 浏览器会拒绝加载哈希不匹配的文件。
-//   校验命令：Get-FileHash -Algorithm SHA384 vendor/mathlive.min.js
-//             然后把 hex 转 base64，拼成 "sha384-<base64>"
-const MATHLIVE_CDN_SRI = "sha384-mVhrhGPJMkDuAaH2uTAksDyhxMdnM4x/GuBdG6VPMqrl7cliamMDF3ak52uvO0be";
 
 declare global {
     interface Window {
@@ -54,111 +46,27 @@ declare global {
 }
 
 function isMathLiveLoaded(): boolean {
-    // 1) 我们自己之前加载过（CDN fallback 留下的版本标记）
-    // 2) bundled import 已经把 <math-field> custom element 注册到 globalThis
-    return !!window[MATHLIVE_VERSION_KEY] || !!customElements.get("math-field");
+    // bundled import 已经把 <math-field> custom element 注册到 globalThis
+    return !!customElements.get("math-field");
 }
 
 /**
- * 从 CDN 加载 MathLive（带纵深防御）：
- *   - URL 必须在白名单内（不允许任意 https URL）
- *   - fetch 后用 Web Crypto 手动校验 SRI 哈希（不用 <script integrity=...>，
- *     避免动态创建 <script> 元素）
- *   - fetch 不带 cookie / Referer，减少侧信道泄漏
- *   - 通过 Blob URL + 动态 import() 走浏览器原生 ES module loader
- *     —— 没有任何 createElement('script') 路径
- *   - UMD body 在 module 上下文里走 fallback 分支（typeof exports /
- *     define.amd 都为 false），挂到 globalThis.MathLive 并注册 <math-field>
- *
- * 仅在 bundled import 未能成功注册 <math-field> 时作为兜底使用。
- */
-function bufferToBase64(buf: ArrayBuffer): string {
-    const bytes = new Uint8Array(buf);
-    let bin = "";
-    // 分块拼字符串，避免大文件调用栈溢出
-    const CHUNK = 0x8000;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-        bin += String.fromCharCode.apply(
-            null,
-            Array.from(bytes.subarray(i, i + CHUNK)) as number[]
-        );
-    }
-    return btoa(bin);
-}
-
-function loadCdnScript(url: string): Promise<void> {
-    if (!MATHLIVE_CDN_URLS.includes(url)) {
-        return Promise.reject(new Error("script URL 不在白名单内: " + url));
-    }
-    return (async () => {
-        const res = await fetch(url, {
-            credentials: "omit",
-            referrerPolicy: "no-referrer",
-            mode: "cors",
-        });
-        if (!res.ok) {
-            throw new Error(`MathLive CDN 拉取失败: HTTP ${res.status} ${url}`);
-        }
-        const buf = await res.arrayBuffer();
-        // 手动 SRI 校验：和 MATHLIVE_CDN_SRI 比对
-        const hash = await crypto.subtle.digest("SHA-384", buf);
-        const actualB64 = bufferToBase64(hash);
-        const expectedB64 = MATHLIVE_CDN_SRI.replace(/^sha384-/, "");
-        if (actualB64 !== expectedB64) {
-            throw new Error(
-                `MathLive CDN 内容 SRI 校验失败 (期望 ${expectedB64.slice(0, 12)}…，实际 ${actualB64.slice(0, 12)}…): ${url}`
-            );
-        }
-        // 通过 blob URL + 动态 import() 走原生 module loader（不创建 <script>）
-        const blob = new Blob([buf], { type: "application/javascript" });
-        const blobUrl = URL.createObjectURL(blob);
-        try {
-            // esbuild/webpack 注释：避免打包器尝试解析这个动态路径
-            await import(/* @vite-ignore */ blobUrl);
-        } finally {
-            URL.revokeObjectURL(blobUrl);
-        }
-        // 标记已加载，避免后续重复拉取
-        (window as any).__latexInputMathLiveCdnLoaded = url;
-    })();
-}
-
-/**
- * 加载 MathLive。
- *   bundled 路径：side-effect import 在 main.ts 顶层完成，<math-field> 已在 customElements
- *   注册表里。这里只是确认并补上版本号。
- *   CDN 路径：loadCdnScript 走 SRI + 白名单的兜底。
- * 多次调用复用同一份 Promise。
- * 失败时 reject 让上层走回退逻辑（MathLive 元素退化为普通 div）。
+ * 确认 MathLive 已就绪。
+ *   bundled import 在 main.ts 顶层完成，<math-field> 已在 customElements 注册表里。
+ *   走到这里 reject 的唯一可能是 main.js 整体没加载成功 —— 让调用方走 fallback。
+ * 多次调用直接 resolve，不缓存 Promise（同步检测就够了）。
  */
 export function loadMathLive(): Promise<void> {
     if (isMathLiveLoaded()) {
         if (!window[MATHLIVE_VERSION_KEY]) window[MATHLIVE_VERSION_KEY] = MATHLIVE_VERSION;
         return Promise.resolve();
     }
-    const cacheKey = "__latexInputMathLivePromise";
-    const cached = (window as any)[cacheKey] as Promise<void> | undefined;
-    if (cached) return cached;
-
-    const p = (async () => {
-        // bundled import 应已注册 <math-field>；走到这里说明没有，
-        // 退到 CDN。
-        let lastErr: any = null;
-        for (const url of MATHLIVE_CDN_URLS) {
-            try {
-                await loadCdnScript(url);
-                window[MATHLIVE_VERSION_KEY] = MATHLIVE_VERSION;
-                console.log("[LaTeX Input] MathLive 从 CDN 加载 ✓:", url);
-                return;
-            } catch (e) {
-                console.warn("[LaTeX Input] MathLive CDN JS 失败，尝试下一个源:", url, e);
-                lastErr = e;
-            }
-        }
-        throw lastErr || new Error("MathLive CDN 都加载失败");
-    })();
-    (window as any)[cacheKey] = p;
-    return p;
+    return Promise.reject(
+        new Error(
+            "[LaTeX Input] MathLive custom element 未注册（main.js 可能未正确加载）。" +
+                "请尝试重新启用插件 / 重启 Obsidian。"
+        )
+    );
 }
 
 /**
