@@ -12,8 +12,8 @@ import { SYMBOL_CATEGORIES, parseInsert } from "./symbols";
 // MathLive 资源以「字符串」形式由 esbuild 虚拟模块注入（esbuild.config.mjs → mathliveVirtualPlugin）
 //   这样做是为了绕开 Obsidian Electron 渲染层的相对路径解析问题
 //   （base URL 是 Obsidian app 目录而非插件目录，<link href="./vendor/..."> 找不到文件）
+//   MathLive 的 CSS 已合并到 styles.css（运行时无需动态注入），所以这里只 import JS。
 import mathliveJsText from "mathlive-js";
-import mathliveCssText from "mathlive-css";
 
 /* ===================================================================
  * MathLive 集成 —— https://github.com/arnog/mathlive
@@ -51,20 +51,12 @@ function isMathLiveLoaded(): boolean {
 }
 
 /**
- * 注入 MathLive 资源（从 main.js 嵌入的字符串）
- *   CSS：建一个 <style> 标签，写入 textContent（已内联 data URI，零外部依赖）
+ * 注入 MathLive JS（从 main.js 嵌入的字符串）。
+ *   CSS：MathLive 的 CSS 已经被打包进 styles.css，Obsidian 会自动加载，无需运行时注入。
  *   JS：建一个 <script> 标签，写入 textContent（同步执行，立即注册 custom elements）
  */
 function injectBundledMathLive(): boolean {
     try {
-        // 1) CSS
-        if (!document.querySelector('style[data-mathlive-bundled-css]')) {
-            const style = document.createElement("style");
-            style.dataset.mathliveBundledCss = "1";
-            style.textContent = mathliveCssText;
-            document.head.appendChild(style);
-        }
-        // 2) JS
         if (!document.querySelector('script[data-mathlive-bundled-src]')) {
             const s = document.createElement("script");
             s.dataset.mathliveBundledSrc = "1";
@@ -394,7 +386,6 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
 
     const json = await res.json();
     // 调试日志：把原始响应打到 console，方便诊断
-    // eslint-disable-next-line no-console
     console.log("[LaTeX Input] OCR raw response:", JSON.stringify(json).slice(0, 800));
 
     const choice = json.choices?.[0];
@@ -403,7 +394,6 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
     // DeepSeek R1 / 推理模型会在 reasoning_content 里放思考过程
     // （不应作为答案，但记录到 console 方便调试）
     if (message?.reasoning_content) {
-        // eslint-disable-next-line no-console
         console.log("[LaTeX Input] OCR reasoning_content (ignored):",
             String(message.reasoning_content).slice(0, 400));
     }
@@ -813,28 +803,32 @@ class LaTeXInputModal extends Modal {
 
         // 强制 inline style 覆盖 Obsidian Modal 默认行为
         //   原因：Obsidian 1.5+ 的 .modal 有 inline style（max-height: 100vh 等），
-        //   CSS class 的优先级不够，必须用 style.xxx 直接设
+        //   CSS class 的优先级不够，必须用 setCssStyles 直接设
         //   min-height: 0 + max-height 硬限制 = 内部 flex 子项能正常收缩
         const m = this.modalEl;
-        m.style.position = "relative";
-        m.style.top = "auto";
-        m.style.bottom = "auto";
-        m.style.left = "auto";
-        m.style.right = "auto";
-        m.style.margin = "auto";
-        m.style.width = "min(1100px, 92vw)";
-        m.style.maxWidth = "1100px";
-        m.style.height = "min(720px, 86vh)";
-        m.style.maxHeight = "86vh";
-        m.style.display = "flex";
-        m.style.flexDirection = "column";
-        m.style.overflow = "hidden";
+        m.setCssStyles({
+            position: "relative",
+            top: "auto",
+            bottom: "auto",
+            left: "auto",
+            right: "auto",
+            margin: "auto",
+            width: "min(1100px, 92vw)",
+            maxWidth: "1100px",
+            height: "min(720px, 86vh)",
+            maxHeight: "86vh",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+        });
         // contentEl 也加保险
-        contentEl.style.flex = "1 1 auto";
-        contentEl.style.minHeight = "0";
-        contentEl.style.overflow = "hidden";
-        contentEl.style.display = "flex";
-        contentEl.style.flexDirection = "column";
+        contentEl.setCssStyles({
+            flex: "1 1 auto",
+            minHeight: "0",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+        });
 
         this.buildLayout();
         this.bindGlobalKeys();
@@ -1095,8 +1089,10 @@ class LaTeXInputModal extends Modal {
         // 即使 MathLive 还没加载，也先创建元素（loadMathLive 完成后会自动升级）
         this.mathFieldEl = previewInner.createEl("math-field", { cls: "latex-input-math-field" });
         // 给一个最小尺寸，避免加载前塌陷
-        (this.mathFieldEl as HTMLElement).style.minHeight = "80px";
-        (this.mathFieldEl as HTMLElement).style.display = "block";
+        (this.mathFieldEl as HTMLElement).setCssStyles({
+            minHeight: "80px",
+            display: "block",
+        });
         // 加载前的占位提示
         const placeholder = previewInner.createDiv({
             cls: "latex-input-math-field-placeholder",
@@ -1533,13 +1529,15 @@ class LaTeXInputModal extends Modal {
         const input = document.createElement("input");
         input.type = "file";
         input.accept = "image/*"; // png/jpg/jpeg/webp/bmp/gif
-        input.style.position = "fixed";
-        input.style.top = "0";
-        input.style.left = "0";
-        input.style.opacity = "0";
-        input.style.pointerEvents = "none";
-        input.style.width = "1px";
-        input.style.height = "1px";
+        input.setCssStyles({
+            position: "fixed",
+            top: "0",
+            left: "0",
+            opacity: "0",
+            pointerEvents: "none",
+            width: "1px",
+            height: "1px",
+        });
 
         const cleanup = () => {
             (this.fileOcrBtn as any)._pickerOpen = false;
@@ -2106,7 +2104,7 @@ class QuickOcrSession {
             cls: "latex-input-quick-ocr-hint",
             text: "用任意方式截图（Win+Shift+S / Snipaste）\n检测到新图片后自动识别并插入",
         });
-        this.hintEl.style.display = "none";
+        this.hintEl.setCssStyles({ display: "none" });
 
         // 拖动支持
         dragHandle.addEventListener("mousedown", (e) => this.onDragStart(e));
@@ -2118,7 +2116,7 @@ class QuickOcrSession {
     private toggleHint() {
         this.hintVisible = !this.hintVisible;
         if (this.hintEl) {
-            this.hintEl.style.display = this.hintVisible ? "block" : "none";
+            this.hintEl.setCssStyles({ display: this.hintVisible ? "block" : "none" });
         }
     }
 
@@ -2142,10 +2140,12 @@ class QuickOcrSession {
         if (!this.isDragging || !this.panelEl) return;
         const x = Math.max(0, Math.min(window.innerWidth - 50, e.clientX - this.dragOffsetX));
         const y = Math.max(0, Math.min(window.innerHeight - 30, e.clientY - this.dragOffsetY));
-        this.panelEl.style.left = `${x}px`;
-        this.panelEl.style.top = `${y}px`;
-        this.panelEl.style.right = "auto";
-        this.panelEl.style.bottom = "auto";
+        this.panelEl.setCssStyles({
+            left: `${x}px`,
+            top: `${y}px`,
+            right: "auto",
+            bottom: "auto",
+        });
     };
 
     private onDragEnd = () => {
@@ -2426,7 +2426,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.addClass("latex-input-settings");
 
-        containerEl.createEl("h2", { text: "LaTeX Input" });
+        new Setting(containerEl).setName("LaTeX Input").setHeading();
         containerEl.createEl("p", {
             text: "AxMath 风格的公式输入面板：点选符号拼 LaTeX，或截图转 LaTeX。",
             cls: "latex-input-settings-intro",
@@ -2441,7 +2441,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
     /* ============== 📌 基础 ============== */
     private renderHotkeySection(parent: HTMLElement) {
         const section = parent.createDiv({ cls: "latex-input-section" });
-        section.createEl("h3", { text: "📌 基础", cls: "latex-input-section-heading" });
+        new Setting(section).setName("📌 基础").setHeading();
 
         new Setting(section)
             .setName("快捷键")
@@ -2461,7 +2461,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
     /* ============== 🤖 AI 识别 ============== */
     private renderOcrSection(parent: HTMLElement) {
         const section = parent.createDiv({ cls: "latex-input-section" });
-        section.createEl("h3", { text: "🤖 AI 识别", cls: "latex-input-section-heading" });
+        new Setting(section).setName("🤖 AI 识别").setHeading();
 
         // 升级提示横幅（仅当检测到旧字段迁移时显示一次，新启动就消失）
         // 这里用一个 always-shown 的小提示说明默认是 MiniMax
@@ -2610,7 +2610,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
     /* ============== ⚙️ 高级 ============== */
     private renderAdvancedSection(parent: HTMLElement) {
         const section = parent.createDiv({ cls: "latex-input-section" });
-        section.createEl("h3", { text: "⚙️ 高级", cls: "latex-input-section-heading" });
+        new Setting(section).setName("⚙️ 高级").setHeading();
 
         new Setting(section)
             .setName("清空全部凭据")
@@ -2640,7 +2640,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
     /* ============== ℹ️ 关于 ============== */
     private renderAboutSection(parent: HTMLElement) {
         const section = parent.createDiv({ cls: "latex-input-section" });
-        section.createEl("h3", { text: "ℹ️ 关于", cls: "latex-input-section-heading" });
+        new Setting(section).setName("ℹ️ 关于").setHeading();
 
         const card = section.createDiv({ cls: "latex-input-about-card" });
         const top = card.createDiv({ cls: "latex-input-about-row" });
