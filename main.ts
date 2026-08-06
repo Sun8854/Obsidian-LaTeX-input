@@ -2426,7 +2426,6 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.addClass("latex-input-settings");
 
-        new Setting(containerEl).setName("LaTeX Input").setHeading();
         containerEl.createEl("p", {
             text: "AxMath 风格的公式输入面板：点选符号拼 LaTeX，或截图转 LaTeX。",
             cls: "latex-input-settings-intro",

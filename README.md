@@ -1,10 +1,10 @@
 # LaTeX Input
 
-[English](./README.en.md) | **中文**
+**English** | [中文](./README.zh.md)
 
-> LaTeX 公式输入面板 — 妈妈再也不用担心我遇到不认识的希腊字母了~
+> An  LaTeX formula input panel for Obsidian — with a visual editor powered by MathLive and a quick-insert symbol palette. Default hotkeys: `Ctrl+Shift+L` (inline) / `Ctrl+Shift+M` (display).
 
-一个为 Obsidian 设计的 LaTeX 公式输入插件。点选符号面板自动生成源码、实时预览、插入到当前笔记；支持**屏幕选区截图识别**和**剪贴板图片识别**，公式录入快人一步。
+A LaTeX formula input plugin for Obsidian. Click symbols from the palette to auto-generate source, preview live, and insert into the current note; also supports **screen-selection OCR** and **clipboard-image OCR** so you can type formulas faster.
 
 ![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-7c3aed?style=flat-square&logo=obsidian&logoColor=white)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)
@@ -13,29 +13,29 @@
 
 ---
 
-## ✨ 特性
+## ✨ Features
 
-- 🎯 **点选符号** — 10 个分类、~250 条符号，点击即插入到光标位置
-- 👀 **实时预览** — 所见即所得，所写即所得
-- ⌨️ **可编辑源码** — 源码框支持 LaTeX 微调
-- 📸 **截图识别公式** — `Ctrl+Shift+S` 拖拽选区，OCR 自动转 LaTeX
-- 📋 **剪贴板识别** — 截图后 `Ctrl+Shift+R` 直接读图
-- 🕘 **历史记录** — 自动持久化，可载入继续编辑
-- 🌗 **暗色适配** — 完美跟随 Obsidian 主题
-- 📦 **零外部依赖** — MathLive 已内联进 `main.js`
+- 🎯 **Click-to-insert symbols** — 10 categories, ~250 symbols. Click to insert at the cursor.
+- 👀 **Live preview** — WYSIWYG-style rendering as you type.
+- ⌨️ **Editable source** — Tweak the raw LaTeX directly in the source box.
+- 📸 **Screenshot OCR** — `Ctrl+Shift+S` to drag-select a region, auto-converted to LaTeX.
+- 📋 **Clipboard OCR** — `Ctrl+Shift+R` reads the image currently in your clipboard.
+- 🕘 **History** — Persisted automatically; reload any past formula to keep editing.
+- 🌗 **Dark-mode friendly** — Follows your Obsidian theme automatically.
+- 📦 **Zero external dependencies** — MathLive is bundled into `main.js`.
 
 ---
 
-## 🚀 快速开始
+## 🚀 Getting Started
 
-### 方式一：从 Release 下载（推荐）
+### Option 1: Download from Releases (recommended)
 
-1. 前往 [Releases](../../releases) 下载 `main.js`、`manifest.json`、`styles.css`
-2. 在 vault 下创建路径：`.obsidian/plugins/latex-input/`
-3. 把上面三个文件放进去
-4. **设置 → 第三方插件 → 已安装插件** → 启用 **LaTeX Input**
+1. Go to [Releases](../../releases) and download `main.js`, `manifest.json`, and `styles.css`.
+2. In your vault, create the path: `.obsidian/plugins/latex-input/`
+3. Drop the three files into that folder.
+4. **Settings → Community plugins → Installed plugins** → enable **LaTeX Input**.
 
-### 方式二：源码构建
+### Option 2: Build from source
 
 ```bash
 git clone <this-repo>
@@ -44,85 +44,85 @@ npm install
 npm run build
 ```
 
-构建产物 `main.js` 在仓库根目录，连同 `manifest.json` / `styles.css` 一起部署到 `.obsidian/plugins/latex-input/`。
+The build output `main.js` lives at the repo root. Deploy it together with `manifest.json` and `styles.css` to `.obsidian/plugins/latex-input/`.
 
 ---
 
-## ⌨️ 快捷键
+## ⌨️ Hotkeys
 
-| 操作 | 快捷键 |
+| Action | Hotkey |
 | --- | --- |
-| 插入行内公式 `$...$` | `Ctrl + Shift + L` |
-| 插入行间公式 `$$...$$` | `Ctrl + Shift + M` |
-| 截图识别（选区，行内） | `Ctrl + Shift + S` |
-| 截图识别（选区，行间） | `Alt + Shift + S` |
-| 剪贴板识别（行内） | `Ctrl + Shift + R` |
-| 剪贴板识别（行间） | `Alt + Shift + R` |
-| 面板内插入到笔记 | `Ctrl + Enter` |
-| 关闭面板 | `Esc` |
+| Insert inline formula `$...$` | `Ctrl + Shift + L` |
+| Insert display formula `$$...$$` | `Ctrl + Shift + M` |
+| Screenshot OCR (region, inline) | `Ctrl + Shift + S` |
+| Screenshot OCR (region, display) | `Alt + Shift + S` |
+| Clipboard OCR (inline) | `Ctrl + Shift + R` |
+| Clipboard OCR (display) | `Alt + Shift + R` |
+| Insert formula from panel into note | `Ctrl + Enter` |
+| Close panel | `Esc` |
 
-> 也可点击左侧栏 **σ** 图标打开面板。`设置 → 快捷键` 可重新绑定。
-
+> You can also open the panel via the **σ** icon in the left ribbon. Rebind any hotkey in **Settings → Hotkeys**.
 
 https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
 
 ---
 
-## 📸 截图识别
+## 📸 Screenshot OCR
 
 https://github.com/user-attachments/assets/da416d31-9908-4a8f-b58d-0f04f32faa7d
 
-按 `Ctrl+Shift+S`（行内）/ `Alt+Shift+S`（行间）：
+Press `Ctrl+Shift+S` (inline) or `Alt+Shift+S` (display):
 
-1. **屏幕共享可用时** — 弹出全屏遮罩，**拖拽框选公式区域** → 释放后自动 OCR 并插入
-2. **屏幕共享不可用时** — 自动切到「剪贴板轮询」模式，右下角小浮窗提示；任意方式截图后**自动检测 + 自动识别 + 自动插入**
+1. **When screen capture is available** — a full-screen overlay appears; **drag to select the formula region**; release to auto-OCR and insert.
+2. **When screen capture is unavailable** — it falls back to **clipboard polling** with a small floating hint in the bottom-right; any screenshot you take is **auto-detected, auto-OCR'd, and auto-inserted**.
 
-按 `Ctrl+Shift+R` / `Alt+Shift+R` 直接读取剪贴板中的图片。
+Press `Ctrl+Shift+R` / `Alt+Shift+R` to read the image currently in your clipboard.
 
-> 首次使用需在插件设置里配置 OCR 服务（API 地址、Key、模型名）。
+> First-time use requires configuring your OCR service in the plugin settings (API endpoint, key, model name).
 
 ---
 
-## 🧩 面板布局
+## 🧩 Panel Layout
+
 <img width="1094" height="722" alt="屏幕截图 2026-08-06 130850" src="https://github.com/user-attachments/assets/4776dae5-77ff-43ee-8668-9d5be4aab068" />
 
 ---
 
-## 🛠 自定义符号
+## 🛠 Customizing Symbols
 
-打开 `symbols.ts`，按格式添加：
+Open `symbols.ts` and add entries in this format:
 
 ```ts
 { display: "∑", insert: "\\sum_{i=1}^{n} " }
 ```
 
-- `display` — 按钮上显示的文字
-- `insert` — 点击后插入的 LaTeX 源码
-- 需光标定位时，在 `insert` 里放 `{cursor}`
+- `display` — the text shown on the button
+- `insert` — the LaTeX source inserted on click
+- To place the caret at a specific position, use `{cursor}` inside `insert`
 
 ```bash
-npm run build   # 重新编译
+npm run build   # rebuild
 ```
 
 ---
 
-## 📁 文件结构
+## 📁 Project Structure
 
 ```
 latex-input/
-├── manifest.json       # Obsidian 插件元数据
-├── main.js             # 编译产物（运行时加载）
-├── main.ts             # 入口源码
-├── symbols.ts          # 符号库（10 分类、~250 条）
-├── styles.css          # 样式
-├── package.json        # npm 配置
-├── esbuild.config.mjs  # 构建脚本（esbuild + MathLive 虚拟模块）
-├── tsconfig.json       # TypeScript 配置
-└── versions.json       # 版本兼容映射
+├── manifest.json       # Obsidian plugin metadata
+├── main.js             # Build output (loaded at runtime)
+├── main.ts             # Entry source
+├── symbols.ts          # Symbol library (10 categories, ~250 entries)
+├── styles.css          # Styles
+├── package.json        # npm config
+├── esbuild.config.mjs  # Build script (esbuild + MathLive virtual module)
+├── tsconfig.json       # TypeScript config
+└── versions.json       # Obsidian version compatibility map
 ```
 
 ---
 
-## 📄 许可
+## 📄 License
 
 Copyright © 2026 Sun · Licensed under [GPL-3.0](./LICENSE)
