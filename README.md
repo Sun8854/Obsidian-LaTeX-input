@@ -1,3 +1,4 @@
+<img width="1094" height="722" alt="屏幕截图 2026-08-06 130850" src="https://github.com/user-attachments/assets/75299bbd-2bbd-4430-9fb1-01ebae3da9e5" />
 # LaTeX Input
 
 > LaTeX 公式输入面板 — 妈妈再也不用担心我遇到不认识的希腊字母了~
@@ -65,6 +66,8 @@ npm run build
 
 ## 📸 截图识别
 
+https://github.com/user-attachments/assets/da416d31-9908-4a8f-b58d-0f04f32faa7d
+
 按 `Ctrl+Shift+S`（行内）/ `Alt+Shift+S`（行间）：
 
 1. **屏幕共享可用时** — 弹出全屏遮罩，**拖拽框选公式区域** → 释放后自动 OCR 并插入
@@ -77,8 +80,7 @@ npm run build
 ---
 
 ## 🧩 面板布局
-
-![屏幕截图 2026-08-06 130850](README.assets/屏幕截图 2026-08-06 130850.png)
+<img width="1094" height="722" alt="屏幕截图 2026-08-06 130850" src="https://github.com/user-attachments/assets/4776dae5-77ff-43ee-8668-9d5be4aab068" />
 
 ---
 
