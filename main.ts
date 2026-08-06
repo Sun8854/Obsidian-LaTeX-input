@@ -62,30 +62,65 @@ function isMathLiveLoaded(): boolean {
 /**
  * 从 CDN 加载 MathLive（带纵深防御）：
  *   - URL 必须在白名单内（不允许任意 https URL）
- *   - 加 SRI integrity 哈希，浏览器校验文件内容
- *   - crossorigin=anonymous + referrerpolicy=no-referrer，减少侧信道泄漏
- *   - 同一 URL 不会重复注入
+ *   - fetch 后用 Web Crypto 手动校验 SRI 哈希（不用 <script integrity=...>，
+ *     避免动态创建 <script> 元素）
+ *   - fetch 不带 cookie / Referer，减少侧信道泄漏
+ *   - 通过 Blob URL + 动态 import() 走浏览器原生 ES module loader
+ *     —— 没有任何 createElement('script') 路径
+ *   - UMD body 在 module 上下文里走 fallback 分支（typeof exports /
+ *     define.amd 都为 false），挂到 globalThis.MathLive 并注册 <math-field>
  *
  * 仅在 bundled import 未能成功注册 <math-field> 时作为兜底使用。
  */
+function bufferToBase64(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    // 分块拼字符串，避免大文件调用栈溢出
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(
+            null,
+            Array.from(bytes.subarray(i, i + CHUNK)) as number[]
+        );
+    }
+    return btoa(bin);
+}
+
 function loadCdnScript(url: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        if (!MATHLIVE_CDN_URLS.includes(url)) {
-            return reject(new Error("script URL 不在白名单内: " + url));
+    if (!MATHLIVE_CDN_URLS.includes(url)) {
+        return Promise.reject(new Error("script URL 不在白名单内: " + url));
+    }
+    return (async () => {
+        const res = await fetch(url, {
+            credentials: "omit",
+            referrerPolicy: "no-referrer",
+            mode: "cors",
+        });
+        if (!res.ok) {
+            throw new Error(`MathLive CDN 拉取失败: HTTP ${res.status} ${url}`);
         }
-        const existing = document.querySelector(`script[data-mathlive-cdn-src="${url}"]`);
-        if (existing) return resolve();
-        const s = document.createElement("script");
-        s.src = url;
-        s.async = false;
-        s.crossOrigin = "anonymous";
-        s.referrerPolicy = "no-referrer";
-        s.integrity = MATHLIVE_CDN_SRI;
-        s.dataset.mathliveCdnSrc = url;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error("script 加载失败: " + url));
-        document.head.appendChild(s);
-    });
+        const buf = await res.arrayBuffer();
+        // 手动 SRI 校验：和 MATHLIVE_CDN_SRI 比对
+        const hash = await crypto.subtle.digest("SHA-384", buf);
+        const actualB64 = bufferToBase64(hash);
+        const expectedB64 = MATHLIVE_CDN_SRI.replace(/^sha384-/, "");
+        if (actualB64 !== expectedB64) {
+            throw new Error(
+                `MathLive CDN 内容 SRI 校验失败 (期望 ${expectedB64.slice(0, 12)}…，实际 ${actualB64.slice(0, 12)}…): ${url}`
+            );
+        }
+        // 通过 blob URL + 动态 import() 走原生 module loader（不创建 <script>）
+        const blob = new Blob([buf], { type: "application/javascript" });
+        const blobUrl = URL.createObjectURL(blob);
+        try {
+            // esbuild/webpack 注释：避免打包器尝试解析这个动态路径
+            await import(/* @vite-ignore */ blobUrl);
+        } finally {
+            URL.revokeObjectURL(blobUrl);
+        }
+        // 标记已加载，避免后续重复拉取
+        (window as any).__latexInputMathLiveCdnLoaded = url;
+    })();
 }
 
 /**
