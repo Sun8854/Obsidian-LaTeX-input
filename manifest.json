@@ -3,7 +3,7 @@
   "name": "LaTeX Input",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "AxMath 风格的 LaTeX 公式输入面板 — 用 MathLive 提供可视化公式编辑，符号面板快速插入。默认快捷键 Ctrl+Shift+L（行内）/ Ctrl+Shift+M（行间）。",
+  "description": "LaTeX 公式输入面板 — 用 MathLive 提供可视化公式编辑，符号面板快速插入。默认快捷键 Ctrl+Shift+L（行内）/ Ctrl+Shift+M（行间）。",
   "author": "Sun",
   "authorUrl": "",
   "isDesktopOnly": true
