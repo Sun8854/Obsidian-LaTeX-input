@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build-time vendor (MathLive source; inlined into main.js by esbuild)
+vendor/
+
+# Local plugin data — contains user secrets (e.g. OCR API key) — DO NOT COMMIT
+data.json
+
+# Debug / scratch files
+_dbg*.js
+_dbg*.mjs
+_dbg*.cjs
+_dbg*.txt
+
+# Local code-analysis tool artifacts
+.codegraph/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log

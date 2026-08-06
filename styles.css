@@ -1,0 +1,1269 @@
+﻿/* =================================================================
+ * LaTeX Input — AxMath 风格样式
+ *   - 米黄背景卡片
+ *   - 顶栏工具条 + 模式切换
+ *   - 左侧：预览 / 源码 / 符号面板
+ *   - 右侧：历史记录
+ * ================================================================= */
+
+/* ---------- 容器 ---------- */
+.latex-input-modal-container {
+    width: min(1100px, 92vw);
+    max-width: 1100px;
+    height: min(720px, 86vh);
+    max-height: 86vh;       /* 硬限制：防止内部内容撑爆 */
+    padding: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+    display: flex;          /* 让内部 latex-input-root 能 fill 容器 */
+    flex-direction: column;
+    min-height: 0;
+}
+
+.latex-input-root {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: #fafaf6;
+    color: #2a2a2a;
+    font-size: 14px;
+}
+
+/* ---------- 顶栏 ---------- */
+.latex-input-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: linear-gradient(to bottom, #f5f3e8, #ecead8);
+    border-bottom: 1px solid #d8d4b8;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+    flex-shrink: 0;
+    gap: 12px;
+    flex-wrap: wrap;        /* 按钮太多时换行（避免被裁掉） */
+}
+
+.latex-input-toolbar-left,
+.latex-input-toolbar-right {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;        /* 子组内也允许换行 */
+}
+
+.latex-input-mode-group {
+    display: inline-flex;
+    background: #fff;
+    border: 1px solid #d0cda8;
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.latex-input-mode-btn {
+    background: transparent;
+    border: 0;
+    padding: 5px 12px;
+    font-size: 13px;
+    color: #555;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+
+.latex-input-mode-btn:hover {
+    background: #f0eed8;
+    color: #333;
+}
+
+.latex-input-mode-btn.is-active {
+    background: #4a6f3a;
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.latex-input-tool-btn {
+    background: #fff;
+    border: 1px solid #d0cda8;
+    padding: 5px 12px;
+    font-size: 13px;
+    color: #444;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.12s;
+    font-family: inherit;
+}
+
+.latex-input-tool-btn:hover {
+    background: #f6f3e2;
+    border-color: #b8b48a;
+    color: #222;
+}
+
+.latex-input-tool-btn-primary {
+    background: #4a6f3a;
+    border-color: #3d5d2f;
+    color: #fff;
+    font-weight: 600;
+}
+
+.latex-input-tool-btn-primary:hover {
+    background: #5a8046;
+    border-color: #4a6f3a;
+    color: #fff;
+}
+
+.latex-input-tool-btn-ocr {
+    background: #c08030;
+    border-color: #a06920;
+    color: #fff;
+}
+
+.latex-input-tool-btn-ocr:hover {
+    background: #d49040;
+    border-color: #b07830;
+    color: #fff;
+}
+
+.latex-input-tool-btn-ocr:disabled {
+    background: #c0a878;
+    border-color: #b09860;
+    color: #fff;
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.latex-input-close-btn {
+    padding: 5px 9px;
+    color: #888;
+}
+
+/* ---------- 主体 ---------- */
+.latex-input-main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    overflow: hidden;
+    min-height: 0;          /* 关键：让 flex 子项能收缩 */
+}
+
+.latex-input-left {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;          /* 关键：让内部可滚动 */
+    border-right: 1px solid #e5e0c4;
+    background: #fafaf6;
+}
+
+.latex-input-right {
+    background: #f5f3e8;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;          /* 关键：让 history 能独立滚动 */
+    overflow: hidden;
+}
+
+/* ---------- 预览（MathLive 可视化编辑区） ---------- */
+.latex-input-preview-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-bottom: 1px solid #e5e0c4;
+    background: #fff;
+}
+
+.latex-input-section-label {
+    padding: 6px 14px;
+    font-size: 11px;
+    color: #8a8466;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    background: #f5f3e8;
+    border-bottom: 1px solid #e5e0c4;
+    font-weight: 600;
+}
+
+.latex-input-preview-inner {
+    flex: 1;
+    overflow: auto;
+    padding: 16px 20px;
+    background: #fffdf3;
+    background-image:
+        linear-gradient(45deg, #f5f3e8 25%, transparent 25%),
+        linear-gradient(-45deg, #f5f3e8 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #f5f3e8 75%),
+        linear-gradient(-45deg, transparent 75%, #f5f3e8 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* MathLive <math-field> —— 占据预览区的主要编辑元素 */
+.latex-input-math-field {
+    width: 100%;
+    min-height: 80px;
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid #e0dcb8;
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-size: 18px;
+    --caret-color: #4a6f3a;
+    --selection-background-color: rgba(74, 111, 58, 0.18);
+    --contains-highlight-background-color: rgba(192, 128, 48, 0.18);
+    display: block;
+}
+
+.latex-input-math-field:focus {
+    outline: 2px solid #4a6f3a;
+    outline-offset: 1px;
+}
+
+/* 加载前的占位提示 */
+.latex-input-math-field-placeholder {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #b0a978;
+    font-size: 13px;
+    font-style: italic;
+    pointer-events: none;
+}
+.latex-input-math-field-placeholder.is-hidden { display: none; }
+
+/* 兜底的旧版预览 div（MathLive 加载失败时用） */
+.latex-input-preview {
+    font-size: 20px;
+    color: #1a1a1a;
+    text-align: center;
+    padding: 18px;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    border: 1px solid #e0dcb8;
+    border-radius: 6px;
+}
+
+.latex-input-preview-placeholder,
+.latex-input-preview-error {
+    color: #b0a978;
+    font-size: 13px;
+    text-align: center;
+    padding: 30px 12px;
+    font-style: italic;
+}
+
+.latex-input-preview-error {
+    color: #c44;
+    font-style: normal;
+}
+
+/* ---------- 源码（折叠面板，默认隐藏） ---------- */
+.latex-input-source-wrap {
+    border-bottom: 1px solid #e5e0c4;
+    background: #fcfaf0;
+    flex-shrink: 0;
+}
+
+.latex-input-source-wrap.is-hidden {
+    display: none;
+}
+
+.latex-input-source-note {
+    font-size: 10.5px;
+    color: #999;
+    padding-right: 8px;
+    font-style: italic;
+}
+
+.latex-input-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f5f3e8;
+    border-bottom: 1px solid #e5e0c4;
+}
+
+.latex-input-section-header .latex-input-section-label {
+    border-bottom: 0;
+    background: transparent;
+}
+
+.latex-input-source-tools {
+    display: flex;
+    gap: 4px;
+    padding-right: 8px;
+}
+
+/* 矩阵行/列操作工具条 —— 在 MathLive 编辑区下方
+   6 个小按钮：行+/行-上/行-/列+/列-上/列-
+   光标不在矩阵里时点击是 no-op（MathLive executeCommand 抛错被吞） */
+.latex-input-matrix-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.1);
+}
+.theme-dark .latex-input-matrix-tools {
+    border-top-color: rgba(255, 255, 255, 0.1);
+}
+.latex-input-matrix-btn {
+    font-size: 12px;
+    padding: 4px 8px;
+    font-family: var(--font-monospace);
+}
+}
+
+.latex-input-mini-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    font-size: 11px;
+    color: #777;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.12s;
+    font-family: inherit;
+}
+
+.latex-input-mini-btn:hover {
+    background: #ecead8;
+    border-color: #d0cda8;
+    color: #333;
+}
+
+.latex-input-source {
+    width: 100%;
+    border: 0;
+    background: #fcfaf0;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #2a2a2a;
+    padding: 8px 14px;
+    resize: none;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.latex-input-source:focus {
+    background: #fff;
+}
+
+.latex-input-status {
+    padding: 4px 14px;
+    font-size: 11px;
+    color: #999;
+    background: #f5f3e8;
+    border-top: 1px solid #e5e0c4;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    transition: background 0.2s, color 0.2s;
+}
+
+.latex-input-status.is-flash {
+    background: #4a6f3a;
+    color: #fff;
+}
+
+/* ---------- 符号面板 ---------- */
+.latex-input-symbol-wrap {
+    flex-shrink: 0;
+    background: #fafaf6;
+    border-top: 1px solid #e5e0c4;
+}
+
+.latex-input-tabs {
+    display: flex;
+    overflow-x: auto;
+    background: #ecead8;
+    border-bottom: 1px solid #d8d4b8;
+    padding: 0 4px;
+    scrollbar-width: thin;
+}
+
+.latex-input-tabs::-webkit-scrollbar { height: 4px; }
+.latex-input-tabs::-webkit-scrollbar-thumb { background: #c4c09a; border-radius: 2px; }
+
+.latex-input-tab {
+    background: transparent;
+    border: 0;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #5a563a;
+    cursor: pointer;
+    transition: all 0.12s;
+    border-bottom: 2px solid transparent;
+    font-family: inherit;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.latex-input-tab:hover {
+    background: rgba(255, 255, 255, 0.4);
+    color: #2a2a2a;
+}
+
+.latex-input-tab.is-active {
+    background: #fafaf6;
+    color: #4a6f3a;
+    border-bottom-color: #4a6f3a;
+    font-weight: 600;
+}
+
+.latex-input-panel {
+    padding: 8px 8px 10px;
+    overflow-y: auto;
+    background: #fafaf6;
+}
+
+.latex-input-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+/* 矩阵分类：用大格子适配缩略图 */
+.latex-input-grid.is-matrix {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+    max-height: 260px;
+}
+
+.latex-input-sym {
+    background: #fff;
+    border: 1px solid #e0dcb8;
+    border-radius: 4px;
+    height: 38px;
+    font-size: 17px;
+    color: #2a2a2a;
+    cursor: pointer;
+    transition: all 0.1s;
+    font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    padding: 0 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 矩阵缩略图按钮：高度加大、上下 padding 充分 */
+.latex-input-sym.has-preview {
+    height: 56px;
+    padding: 4px 6px;
+    background: #fcfaf0;
+    font-family: inherit;
+    overflow: hidden;
+}
+
+.latex-input-sym-preview {
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    /* 缩略图内部渲染的公式稍小一点 */
+    font-size: 13px;
+    line-height: 1.1;
+    color: #2a2a2a;
+    overflow: hidden;
+}
+
+.latex-input-sym-preview .katex,
+.latex-input-sym-preview .MathJax {
+    font-size: 0.95em !important;
+}
+
+.latex-input-sym-preview > p {
+    margin: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.latex-input-sym:hover {
+    background: #4a6f3a;
+    color: #fff;
+    border-color: #3d5d2f;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.latex-input-sym:hover .latex-input-sym-preview {
+    color: #fff;
+}
+
+.latex-input-sym:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) inset;
+}
+
+/* 工具按钮 active 态（源码切换） */
+.latex-input-mini-btn.is-active {
+    background: #4a6f3a;
+    color: #fff;
+    border-color: #3d5d2f;
+}
+
+/* 状态栏 warn 变体（MathLive 加载失败提示） */
+.latex-input-status.is-warn {
+    background: #c08030;
+    color: #fff;
+}
+
+/* ---------- 历史 ---------- */
+.latex-input-history-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;        /* 防止子元素溢出撑大 */
+}
+
+.latex-input-history {
+    flex: 1;
+    min-height: 0;          /* 关键：flex 子项收缩 */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px;
+    background: #f5f3e8;
+}
+
+.latex-input-history-empty {
+    text-align: center;
+    color: #b0a978;
+    padding: 30px 8px;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.latex-input-history-item {
+    background: #fff;
+    border: 1px solid #e0dcb8;
+    border-left: 3px solid #4a6f3a;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: all 0.12s;
+    cursor: default;
+    overflow: hidden;        /* 防止内超宽内容溢出 */
+}
+
+.latex-input-history-item:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    border-color: #b8b48a;
+}
+
+.latex-input-history-item.is-block {
+    border-left-color: #c08030;
+}
+
+.latex-input-history-preview {
+    font-size: 14px;
+    text-align: center;
+    padding: 6px 4px;
+    overflow-x: auto;        /* 水平滚动：超宽公式（矩阵/aligned） */
+    overflow-y: hidden;
+    max-height: 120px;      /* 防止单条历史预览过高 */
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.latex-input-history-preview .katex { font-size: 1.05em; }
+
+.latex-input-history-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: #999;
+    font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+.latex-input-history-tools {
+    padding: 6px 8px;
+    border-top: 1px solid #e0dcb8;
+    background: #ecead8;
+    text-align: right;
+}
+
+/* ---------- 滚动条 ---------- */
+.latex-input-preview-inner::-webkit-scrollbar,
+.latex-input-history::-webkit-scrollbar,
+.latex-input-panel::-webkit-scrollbar,
+.latex-input-grid::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.latex-input-preview-inner::-webkit-scrollbar-thumb,
+.latex-input-history::-webkit-scrollbar-thumb,
+.latex-input-panel::-webkit-scrollbar-thumb,
+.latex-input-grid::-webkit-scrollbar-thumb {
+    background: #c4c09a;
+    border-radius: 3px;
+}
+
+.latex-input-preview-inner::-webkit-scrollbar-track,
+.latex-input-history::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* ---------- 暗色主题适配 ---------- */
+.theme-dark .latex-input-root { background: #2a2a2a; color: #e0e0e0; }
+.theme-dark .latex-input-toolbar { background: linear-gradient(to bottom, #3a3a3a, #2a2a2a); border-bottom-color: #1a1a1a; }
+.theme-dark .latex-input-mode-group { background: #1f1f1f; border-color: #444; }
+.theme-dark .latex-input-mode-btn { color: #aaa; }
+.theme-dark .latex-input-mode-btn:hover { background: #333; color: #fff; }
+.theme-dark .latex-input-mode-btn.is-active { background: #5a8046; color: #fff; }
+.theme-dark .latex-input-tool-btn { background: #3a3a3a; border-color: #555; color: #ddd; }
+.theme-dark .latex-input-tool-btn:hover { background: #444; border-color: #777; color: #fff; }
+.theme-dark .latex-input-tool-btn-primary { background: #5a8046; border-color: #6a9050; }
+.theme-dark .latex-input-left { background: #2a2a2a; border-right-color: #1a1a1a; }
+.theme-dark .latex-input-right { background: #252525; }
+.theme-dark .latex-input-section-label { background: #333; color: #999; border-bottom-color: #1a1a1a; }
+.theme-dark .latex-input-preview-wrap { background: #2a2a2a; border-bottom-color: #1a1a1a; }
+.theme-dark .latex-input-preview-inner { background: #1f1f1f; background-image: none; }
+.theme-dark .latex-input-preview { color: #e8e8e8; background: #1f1f1f; border-color: #444; }
+.theme-dark .latex-input-math-field { background: #1f1f1f; border-color: #444; color: #e0e0e0; --caret-color: #7ab060; --selection-background-color: rgba(122, 176, 96, 0.25); --contains-highlight-background-color: rgba(212, 144, 64, 0.25); }
+.theme-dark .latex-input-math-field:focus { outline-color: #7ab060; }
+.theme-dark .latex-input-sym.has-preview { background: #2a2a2a; }
+.theme-dark .latex-input-sym-preview { color: #e0e0e0; }
+.theme-dark .latex-input-source-wrap { background: #1f1f1f; border-bottom-color: #1a1a1a; }
+.theme-dark .latex-input-section-header { background: #333; border-bottom-color: #1a1a1a; }
+.theme-dark .latex-input-source { background: #1f1f1f; color: #e0e0e0; }
+.theme-dark .latex-input-source:focus { background: #252525; }
+.theme-dark .latex-input-status { background: #333; color: #888; border-top-color: #1a1a1a; }
+.theme-dark .latex-input-tabs { background: #252525; border-bottom-color: #1a1a1a; }
+.theme-dark .latex-input-tab { color: #aaa; }
+.theme-dark .latex-input-tab:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.theme-dark .latex-input-tab.is-active { background: #2a2a2a; color: #7ab060; border-bottom-color: #7ab060; }
+.theme-dark .latex-input-panel { background: #2a2a2a; }
+.theme-dark .latex-input-sym { background: #333; border-color: #444; color: #e0e0e0; }
+.theme-dark .latex-input-sym:hover { background: #5a8046; border-color: #6a9050; color: #fff; }
+.theme-dark .latex-input-history { background: #252525; }
+.theme-dark .latex-input-history-item { background: #2f2f2f; border-color: #444; }
+.theme-dark .latex-input-history-item:hover { border-color: #666; }
+.theme-dark .latex-input-history-meta { color: #888; }
+.theme-dark .latex-input-history-tools { background: #252525; border-top-color: #1a1a1a; }
+
+/* =================================================================
+ * 设置页样式（重组版）
+ *   - 分组卡片
+ *   - 引擎配置卡（动态显示当前引擎）
+ *   - 状态徽章 / 密码输入 + 眼睛 / 测试结果
+ *   - info box（不再用 heading 误导）
+ * ================================================================= */
+
+/* ---------- 容器与介绍 ---------- */
+.latex-input-settings-intro {
+    color: var(--text-muted, #666);
+    font-size: 13px;
+    margin: -8px 0 18px;
+    padding: 0;
+    line-height: 1.5;
+}
+
+/* ---------- 分组 ---------- */
+.latex-input-section {
+    margin-bottom: 24px;
+}
+
+.latex-input-section-heading {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-normal, #2a2a2a);
+    margin: 18px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--background-modifier-border, #e5e0c4);
+    letter-spacing: 0.2px;
+}
+
+/* ---------- 引擎配置卡 ---------- */
+.latex-input-engine-card {
+    border: 1px solid var(--background-modifier-border, #e0dcb8);
+    border-radius: 8px;
+    background: var(--background-primary, #fff);
+    margin: 12px 0 14px;
+    padding: 12px 14px 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.latex-input-engine-card.is-current {
+    border-color: #4a6f3a;
+    box-shadow: 0 1px 4px rgba(74, 111, 58, 0.18);
+    background: #fafdf6;
+}
+
+.theme-dark .latex-input-engine-card.is-current {
+    border-color: #5a8046;
+    background: #2a3026;
+    box-shadow: 0 1px 4px rgba(90, 128, 70, 0.25);
+}
+
+.latex-input-engine-card.is-other {
+    opacity: 0.75;
+}
+
+.latex-input-engine-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.latex-input-engine-card-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.latex-input-engine-card-title strong {
+    font-size: 15px;
+    color: var(--text-normal, #2a2a2a);
+}
+
+.latex-input-engine-card-sub {
+    font-size: 11px;
+    color: var(--text-muted, #999);
+}
+
+.latex-input-engine-card-badges {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* ---------- 徽章 ---------- */
+.latex-input-badge {
+    display: inline-block;
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    line-height: 1.4;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.latex-input-badge.is-current {
+    background: #4a6f3a;
+    color: #fff;
+    border-color: #3d5d2f;
+}
+
+.theme-dark .latex-input-badge.is-current {
+    background: #5a8046;
+    border-color: #6a9050;
+}
+
+.latex-input-badge.is-ok {
+    background: #e6f3df;
+    color: #2d5a1f;
+    border-color: #b5d8a0;
+}
+
+.latex-input-badge.is-warn {
+    background: #fff3d9;
+    color: #8a6d20;
+    border-color: #e6c97a;
+}
+
+.theme-dark .latex-input-badge.is-ok {
+    background: #2d4220;
+    color: #a8d090;
+    border-color: #4a6f3a;
+}
+
+.theme-dark .latex-input-badge.is-warn {
+    background: #4a3a1a;
+    color: #d8b870;
+    border-color: #6a5530;
+}
+
+/* ---------- 密码输入 + 眼睛 ---------- */
+.latex-input-pwd-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.latex-input-pwd-input {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 10px;
+    border: 1px solid var(--background-modifier-border, #d0cda8);
+    border-radius: 4px;
+    background: var(--background-primary, #fff);
+    color: var(--text-normal, #2a2a2a);
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.12s;
+}
+
+.latex-input-pwd-input:focus {
+    border-color: #4a6f3a;
+    box-shadow: 0 0 0 2px rgba(74, 111, 58, 0.15);
+}
+
+.latex-input-eye-btn {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border, #d0cda8);
+    background: var(--background-primary, #fff);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.latex-input-eye-btn:hover {
+    background: #f0eed8;
+    border-color: #b8b48a;
+}
+
+.theme-dark .latex-input-eye-btn {
+    background: #1f1f1f;
+    border-color: #444;
+}
+
+.theme-dark .latex-input-eye-btn:hover {
+    background: #333;
+    border-color: #666;
+}
+
+/* ---------- URL 输入 ---------- */
+.latex-input-url-input {
+    width: 100%;
+    padding: 5px 10px;
+    border: 1px solid var(--background-modifier-border, #d0cda8);
+    border-radius: 4px;
+    background: var(--background-primary, #fff);
+    color: var(--text-normal, #2a2a2a);
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.12s;
+}
+
+.latex-input-url-input:focus {
+    border-color: #4a6f3a;
+    box-shadow: 0 0 0 2px rgba(74, 111, 58, 0.15);
+}
+
+.theme-dark .latex-input-url-input {
+    background: #1f1f1f;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+/* ---------- 测试结果 ---------- */
+.latex-input-test-result {
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    background: transparent;
+    color: transparent;
+    min-height: 0;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.latex-input-test-result.is-ok {
+    background: #e6f3df;
+    color: #2d5a1f;
+    border-color: #b5d8a0;
+}
+
+.latex-input-test-result.is-err {
+    background: #fbe5e5;
+    color: #8a2828;
+    border-color: #e6a8a8;
+}
+
+.theme-dark .latex-input-test-result.is-ok {
+    background: #2d4220;
+    color: #a8d090;
+    border-color: #4a6f3a;
+}
+
+.theme-dark .latex-input-test-result.is-err {
+    background: #4a2828;
+    color: #e0a8a8;
+    border-color: #8a4848;
+}
+
+/* ---------- 折叠按钮 / 其它引擎容器 ---------- */
+.latex-input-toggle-btn {
+    display: block;
+    width: 100%;
+    margin: 4px 0 8px;
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px dashed var(--background-modifier-border, #c4c09a);
+    border-radius: 5px;
+    color: var(--text-muted, #777);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.12s;
+    font-family: inherit;
+}
+
+.latex-input-toggle-btn:hover {
+    background: var(--background-modifier-hover, #f6f3e2);
+    border-color: #b8b48a;
+    color: var(--text-normal, #333);
+}
+
+.latex-input-other-engines {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--background-modifier-border, #e0dcb8);
+}
+
+/* ---------- info box（顶部对齐的提示）---------- */
+.latex-input-info-box {
+    margin: 14px 0 4px;
+    padding: 10px 14px;
+    background: #f0f6ea;
+    border-left: 3px solid #4a6f3a;
+    border-radius: 4px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #3a3a3a;
+}
+
+.theme-dark .latex-input-info-box {
+    background: #2a3026;
+    border-left-color: #5a8046;
+    color: #c8c8c8;
+}
+
+.latex-input-info-box-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #2d5a1f;
+}
+
+.theme-dark .latex-input-info-box-title {
+    color: #a8d090;
+}
+
+.latex-input-info-box ol {
+    margin: 0;
+    padding-left: 22px;
+}
+
+.latex-input-info-box li {
+    margin: 2px 0;
+}
+
+/* ---------- 引擎卡内嵌的折叠 info（details）---------- */
+.latex-input-details {
+    margin: 8px 0 4px;
+    font-size: 12px;
+}
+
+.latex-input-details summary {
+    cursor: pointer;
+    color: var(--text-muted, #777);
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-weight: 500;
+    user-select: none;
+    list-style: none;
+}
+
+.latex-input-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.latex-input-details summary::before {
+    content: "▸ ";
+    display: inline-block;
+    transition: transform 0.15s;
+    color: #4a6f3a;
+}
+
+.latex-input-details[open] summary::before {
+    content: "▾ ";
+}
+
+.latex-input-details summary:hover {
+    background: var(--background-modifier-hover, #f0eed8);
+}
+
+.latex-input-details ol {
+    margin: 4px 0 0;
+    padding: 4px 8px 4px 32px;
+    color: var(--text-muted, #666);
+    line-height: 1.6;
+}
+
+.latex-input-details li {
+    margin: 1px 0;
+}
+
+/* ---------- 关于卡片 ---------- */
+.latex-input-about-card {
+    background: var(--background-secondary, #f5f3e8);
+    border: 1px solid var(--background-modifier-border, #e0dcb8);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-muted, #666);
+}
+
+.latex-input-about-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    color: var(--text-normal, #2a2a2a);
+}
+
+.latex-input-about-row strong {
+    font-size: 14px;
+}
+
+.latex-input-about-version {
+    font-size: 11px;
+    color: var(--text-faint, #999);
+    font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+.latex-input-about-desc {
+    margin-top: 2px;
+}
+
+.latex-input-about-meta {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text-faint, #999);
+}
+
+/* =================================================================
+ * 截图选区 UI（getDisplayMedia 全屏遮罩）
+ *   盖在 Obsidian workspace 容器上，z-index 拉到最高
+ * ================================================================= */
+.latex-input-capture-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 999999;
+    pointer-events: auto;
+}
+
+.latex-input-capture-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.32);
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.latex-input-capture-loading {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 16px 24px;
+    background: rgba(20, 20, 20, 0.92);
+    color: #fff;
+    font-size: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+
+.latex-input-capture-hint {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 18px;
+    background: rgba(20, 20, 20, 0.85);
+    color: #fff;
+    border-radius: 22px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transition: opacity 0.2s;
+    font-family: inherit;
+}
+
+.latex-input-capture-hint.is-hidden {
+    opacity: 0;
+}
+
+.latex-input-capture-hint-main {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+
+.latex-input-capture-hint-sub {
+    font-size: 11px;
+    opacity: 0.7;
+    font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+.latex-input-capture-selection {
+    position: fixed;
+    border: 2px solid #4a6f3a;
+    background: rgba(74, 111, 58, 0.12);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.32);
+    pointer-events: none;
+    display: none;
+    z-index: 9;
+}
+
+.latex-input-capture-selection.is-active {
+    display: block;
+}
+
+/* =================================================================
+ * 剪贴板轮询 OCR 浮窗（getDisplayMedia 不可用时的 fallback）
+ *   右下角小浮窗 + 可拖动 + 不挡屏幕内容
+ * ================================================================= */
+.latex-input-quick-ocr-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 999998;
+    pointer-events: auto;
+    font-family: inherit;
+}
+
+.latex-input-quick-ocr-panel {
+    background: rgba(20, 20, 20, 0.94);
+    color: #fff;
+    border-radius: 10px;
+    padding: 8px 12px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32), 0 1px 3px rgba(0, 0, 0, 0.2);
+    min-width: 180px;
+    max-width: 280px;
+    font-size: 13px;
+    user-select: none;
+    -webkit-user-select: none;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: box-shadow 0.2s;
+}
+
+.latex-input-quick-ocr-panel.is-dragging {
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    cursor: grabbing !important;
+}
+
+.latex-input-quick-ocr-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: grab;
+}
+
+.latex-input-quick-ocr-header:active {
+    cursor: grabbing;
+}
+
+.latex-input-quick-ocr-drag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.latex-input-quick-ocr-icon {
+    font-size: 16px;
+    animation: latex-input-quick-ocr-pulse 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+@keyframes latex-input-quick-ocr-pulse {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+.latex-input-quick-ocr-status {
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.latex-input-quick-ocr-btn {
+    background: transparent;
+    border: 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: all 0.12s;
+    flex-shrink: 0;
+}
+
+.latex-input-quick-ocr-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.latex-input-quick-ocr-cancel:hover {
+    background: rgba(220, 80, 80, 0.3);
+    color: #ffaaaa;
+}
+
+.latex-input-quick-ocr-hint {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.55;
+    white-space: pre-line;
+}
+
