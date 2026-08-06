@@ -1,4 +1,3 @@
-<img width="1094" height="722" alt="屏幕截图 2026-08-06 130850" src="https://github.com/user-attachments/assets/75299bbd-2bbd-4430-9fb1-01ebae3da9e5" />
 # LaTeX Input
 
 > LaTeX 公式输入面板 — 妈妈再也不用担心我遇到不认识的希腊字母了~
