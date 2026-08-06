@@ -9,19 +9,21 @@
 
 import { App, Component, Editor, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { SYMBOL_CATEGORIES, parseInsert } from "./symbols";
-// MathLive 资源以「字符串」形式由 esbuild 虚拟模块注入（esbuild.config.mjs → mathliveVirtualPlugin）
-//   这样做是为了绕开 Obsidian Electron 渲染层的相对路径解析问题
-//   （base URL 是 Obsidian app 目录而非插件目录，<link href="./vendor/..."> 找不到文件）
-//   MathLive 的 CSS 已合并到 styles.css（运行时无需动态注入），所以这里只 import JS。
-import mathliveJsText from "mathlive-js";
+// MathLive JS 由 esbuild 虚拟模块以「ES module」形式 bundle 进 main.js（见 esbuild.config.mjs）。
+//   副作用：模块加载时 MathLive 的 UMD body 立即执行，customElements.define("math-field", ...)
+//   完成注册，<math-field> 元素即可在 DOM 中使用。这样做既绕开 Obsidian Electron 渲染层
+//   相对路径解析问题（base URL 是 Obsidian app 目录而非插件目录），也避免了运行时动态
+//   注入 <script> 元素（更安全：不存在从字符串/textContent 注入任意代码的路径）。
+//   MathLive 的 CSS 已合并到 styles.css，Obsidian 会自动加载，无需运行时注入。
+import "mathlive-js";
 
 /* ===================================================================
  * MathLive 集成 —— https://github.com/arnog/mathlive
  *   MathLive 是成熟的 Web 公式编辑器，<math-field> 元素提供所见即所得的 LaTeX 输入。
  *
  *   资源加载策略（按优先级回退）：
- *     1) main.js 内部嵌入的资源（CSS 已内联 fonts data URI，JS 是 esbuild 虚拟模块注入的文本）
- *        —— 零外部依赖、零相对路径问题
+ *     1) main.js 内部 bundle 的 MathLive 模块（side-effect import，UMD body 在模块加载时执行）
+ *        —— 零外部依赖、零相对路径问题、零动态 <script> 注入
  *     2) jsdelivr CDN
  *     3) unpkg CDN
  *     失败时 MathLive 元素退化为普通 div，仍可由 renderMath() 渲染（仅预览）
@@ -39,6 +41,11 @@ const MATHLIVE_CDN_URLS = [
     "https://cdn.jsdelivr.net/npm/mathlive@0.103.0/dist/mathlive.min.js",
     "https://unpkg.com/mathlive@0.103.0/dist/mathlive.min.js",
 ];
+// SRI (Subresource Integrity) 哈希，对应 MATHLIVE_VERSION 的 dist/mathlive.min.js。
+//   升级 MathLive 版本时必须同步更新此哈希 —— 浏览器会拒绝加载哈希不匹配的文件。
+//   校验命令：Get-FileHash -Algorithm SHA384 vendor/mathlive.min.js
+//             然后把 hex 转 base64，拼成 "sha384-<base64>"
+const MATHLIVE_CDN_SRI = "sha384-mVhrhGPJMkDuAaH2uTAksDyhxMdnM4x/GuBdG6VPMqrl7cliamMDF3ak52uvO0be";
 
 declare global {
     interface Window {
@@ -47,38 +54,33 @@ declare global {
 }
 
 function isMathLiveLoaded(): boolean {
-    return !!window[MATHLIVE_VERSION_KEY];
+    // 1) 我们自己之前加载过（CDN fallback 留下的版本标记）
+    // 2) bundled import 已经把 <math-field> custom element 注册到 globalThis
+    return !!window[MATHLIVE_VERSION_KEY] || !!customElements.get("math-field");
 }
 
 /**
- * 注入 MathLive JS（从 main.js 嵌入的字符串）。
- *   CSS：MathLive 的 CSS 已经被打包进 styles.css，Obsidian 会自动加载，无需运行时注入。
- *   JS：建一个 <script> 标签，写入 textContent（同步执行，立即注册 custom elements）
+ * 从 CDN 加载 MathLive（带纵深防御）：
+ *   - URL 必须在白名单内（不允许任意 https URL）
+ *   - 加 SRI integrity 哈希，浏览器校验文件内容
+ *   - crossorigin=anonymous + referrerpolicy=no-referrer，减少侧信道泄漏
+ *   - 同一 URL 不会重复注入
+ *
+ * 仅在 bundled import 未能成功注册 <math-field> 时作为兜底使用。
  */
-function injectBundledMathLive(): boolean {
-    try {
-        if (!document.querySelector('script[data-mathlive-bundled-src]')) {
-            const s = document.createElement("script");
-            s.dataset.mathliveBundledSrc = "1";
-            // type=text/plain 或不设 type 都行；textContent 会被执行
-            // 但 MathLive 用到了一些新语法（如 class fields），保持默认 type="text/javascript"
-            s.textContent = mathliveJsText;
-            document.head.appendChild(s);
-        }
-        return true;
-    } catch (e) {
-        console.error("[LaTeX Input] 注入内嵌 MathLive 资源失败:", e);
-        return false;
-    }
-}
-
 function loadCdnScript(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
+        if (!MATHLIVE_CDN_URLS.includes(url)) {
+            return reject(new Error("script URL 不在白名单内: " + url));
+        }
         const existing = document.querySelector(`script[data-mathlive-cdn-src="${url}"]`);
         if (existing) return resolve();
         const s = document.createElement("script");
         s.src = url;
         s.async = false;
+        s.crossOrigin = "anonymous";
+        s.referrerPolicy = "no-referrer";
+        s.integrity = MATHLIVE_CDN_SRI;
         s.dataset.mathliveCdnSrc = url;
         s.onload = () => resolve();
         s.onerror = () => reject(new Error("script 加载失败: " + url));
@@ -87,31 +89,29 @@ function loadCdnScript(url: string): Promise<void> {
 }
 
 /**
- * 加载 MathLive（CSS + JS）。
+ * 加载 MathLive。
+ *   bundled 路径：side-effect import 在 main.ts 顶层完成，<math-field> 已在 customElements
+ *   注册表里。这里只是确认并补上版本号。
+ *   CDN 路径：loadCdnScript 走 SRI + 白名单的兜底。
  * 多次调用复用同一份 Promise。
- * 失败时 reject 让上层走回退逻辑。
+ * 失败时 reject 让上层走回退逻辑（MathLive 元素退化为普通 div）。
  */
 export function loadMathLive(): Promise<void> {
-    if (isMathLiveLoaded()) return Promise.resolve();
+    if (isMathLiveLoaded()) {
+        if (!window[MATHLIVE_VERSION_KEY]) window[MATHLIVE_VERSION_KEY] = MATHLIVE_VERSION;
+        return Promise.resolve();
+    }
     const cacheKey = "__latexInputMathLivePromise";
     const cached = (window as any)[cacheKey] as Promise<void> | undefined;
     if (cached) return cached;
 
     const p = (async () => {
-        // 1) 优先：main.js 内部嵌入的资源（最快、最稳）
-        const ok = injectBundledMathLive();
-        if (ok) {
-            window[MATHLIVE_VERSION_KEY] = MATHLIVE_VERSION;
-            console.log("[LaTeX Input] MathLive 从内嵌资源加载 ✓");
-            return;
-        }
-
-        // 2) 兜底：CDN
+        // bundled import 应已注册 <math-field>；走到这里说明没有，
+        // 退到 CDN。
         let lastErr: any = null;
         for (const url of MATHLIVE_CDN_URLS) {
             try {
                 await loadCdnScript(url);
-                // CDN 走 link 方式加载 CSS（这里只取 JS；CSS 失败时不影响核心）
                 window[MATHLIVE_VERSION_KEY] = MATHLIVE_VERSION;
                 console.log("[LaTeX Input] MathLive 从 CDN 加载 ✓:", url);
                 return;
@@ -120,7 +120,7 @@ export function loadMathLive(): Promise<void> {
                 lastErr = e;
             }
         }
-        throw lastErr || new Error("MathLive 内嵌 + CDN 都加载失败");
+        throw lastErr || new Error("MathLive CDN 都加载失败");
     })();
     (window as any)[cacheKey] = p;
     return p;
