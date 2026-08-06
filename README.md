@@ -1,7 +1,5 @@
 # LaTeX Input
 
-[English](./README.en.md) | **中文**
-
 > LaTeX 公式输入面板 — 妈妈再也不用担心我遇到不认识的希腊字母了~
 
 一个为 Obsidian 设计的 LaTeX 公式输入插件。点选符号面板自动生成源码、实时预览、插入到当前笔记；支持**屏幕选区截图识别**和**剪贴板图片识别**，公式录入快人一步。
@@ -63,9 +61,14 @@ npm run build
 
 > 也可点击左侧栏 **σ** 图标打开面板。`设置 → 快捷键` 可重新绑定。
 
+
+https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
+
 ---
 
 ## 📸 截图识别
+
+https://github.com/user-attachments/assets/da416d31-9908-4a8f-b58d-0f04f32faa7d
 
 按 `Ctrl+Shift+S`（行内）/ `Alt+Shift+S`（行间）：
 
@@ -79,8 +82,7 @@ npm run build
 ---
 
 ## 🧩 面板布局
-
-![屏幕截图 2026-08-06 130850](README.assets/屏幕截图 2026-08-06 130850.png)
+<img width="1094" height="722" alt="屏幕截图 2026-08-06 130850" src="https://github.com/user-attachments/assets/4776dae5-77ff-43ee-8668-9d5be4aab068" />
 
 ---
 

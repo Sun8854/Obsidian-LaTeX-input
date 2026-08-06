@@ -63,9 +63,13 @@ The build output `main.js` lives at the repo root. Deploy it together with `mani
 
 > You can also open the panel via the **σ** icon in the left ribbon. Rebind any hotkey in **Settings → Hotkeys**.
 
+https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
+
 ---
 
 ## 📸 Screenshot OCR
+
+https://github.com/user-attachments/assets/da416d31-9908-4a8f-b58d-0f04f32faa7d
 
 Press `Ctrl+Shift+S` (inline) or `Alt+Shift+S` (display):
 
@@ -80,7 +84,7 @@ Press `Ctrl+Shift+R` / `Alt+Shift+R` to read the image currently in your clipboa
 
 ## 🧩 Panel Layout
 
-![Panel preview](README.assets/屏幕截图%202026-08-06%20130850.png)
+<img width="1094" height="722" alt="屏幕截图 2026-08-06 130850" src="https://github.com/user-attachments/assets/4776dae5-77ff-43ee-8668-9d5be4aab068" />
 
 ---
 
