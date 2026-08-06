@@ -61,6 +61,9 @@ npm run build
 
 > 也可点击左侧栏 **σ** 图标打开面板。`设置 → 快捷键` 可重新绑定。
 
+
+https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
+
 ---
 
 ## 📸 截图识别
