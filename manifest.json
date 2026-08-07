@@ -1,8 +1,8 @@
 {
   "id": "latex-input",
   "name": "LaTeX Input",
-  "version": "0.1.6",
-  "minAppVersion": "1.5.0",
+  "version": "0.1.7",
+  "minAppVersion": "1.10.0",
   "description": "Visual LaTeX input panel (MathLive) with click-to-insert symbols, live preview, screenshot OCR, and clipboard image OCR. 6 commands — bind your own hotkeys in Settings → Hotkeys.",
   "author": "Sun",
   "authorUrl": "",
