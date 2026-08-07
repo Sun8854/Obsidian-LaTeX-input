@@ -28,14 +28,23 @@
 
 ## 🚀 快速开始
 
-### 方式一：从 Release 下载（推荐）
+### 方式一：从社区插件市场安装（推荐）
+
+1. 在 Obsidian 中打开 **设置 → 第三方插件**
+2. 确认页面顶部已开启「**启用第三方插件**」开关
+3. 点击 **浏览**，搜索 `LaTeX Input`
+4. 点击 **安装**，再回到 **已安装插件** 中启用 **LaTeX Input**
+
+> 如果搜索不到（区域/缓存问题），可以直接打开插件页：<https://obsidian.md/plugins?id=latex-input>
+
+### 方式二：从 Release 下载
 
 1. 前往 [Releases](../../releases) 下载 `main.js`、`manifest.json`、`styles.css`
 2. 在 vault 下创建路径：`.obsidian/plugins/latex-input/`
 3. 把上面三个文件放进去
 4. **设置 → 第三方插件 → 已安装插件** → 启用 **LaTeX Input**
 
-### 方式二：源码构建
+### 方式三：源码构建
 
 ```bash
 git clone <this-repo>

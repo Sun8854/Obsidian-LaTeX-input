@@ -28,14 +28,23 @@ A LaTeX formula input plugin for Obsidian. Click symbols from the palette to aut
 
 ## 🚀 Getting Started
 
-### Option 1: Download from Releases (recommended)
+### Option 1: Install from the Community Plugin Store (recommended)
+
+1. In Obsidian, open **Settings → Community plugins**.
+2. Make sure Community plugins are **enabled** (toggle on top of the page).
+3. Click **Browse** and search for `LaTeX Input`.
+4. Click **Install**, then go back to **Installed plugins** and enable **LaTeX Input**.
+
+> If the store search doesn't show it (region/cache issues), open the plugin page directly: <https://obsidian.md/plugins?id=latex-input>
+
+### Option 2: Download from Releases
 
 1. Go to [Releases](../../releases) and download `main.js`, `manifest.json`, and `styles.css`.
 2. In your vault, create the path: `.obsidian/plugins/latex-input/`
 3. Drop the three files into that folder.
 4. **Settings → Community plugins → Installed plugins** → enable **LaTeX Input**.
 
-### Option 2: Build from source
+### Option 3: Build from source
 
 ```bash
 git clone <this-repo>
