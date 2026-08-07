@@ -1,0 +1,18 @@
+# Force LF line endings for all text files — keeps the repo portable across
+# Windows / macOS / Linux editors and prevents mixed CRLF noise in diffs.
+* text=auto eol=lf
+
+# Build artifact (MathLive bundle) — generated, not hand-edited
+main.js binary
+
+# Common binary types
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

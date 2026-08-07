@@ -1,4 +1,4 @@
-﻿/**
+/**
  * LaTeX Input — AxMath 风格的公式输入面板
  *
  * 主要组件：
@@ -7,7 +7,7 @@
  *   - HistoryStore      —— 简单的 localStorage 持久化
  */
 
-import { App, Component, Editor, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlResponse, Setting } from "obsidian";
+import { App, Component, Editor, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlResponse, Setting, SettingDefinitionItem } from "obsidian";
 import { SYMBOL_CATEGORIES, parseInsert } from "./symbols";
 // MathLive JS 由 esbuild 虚拟模块以「ES module」形式 bundle 进 main.js（见 esbuild.config.mjs）。
 //   副作用：模块加载时 MathLive 的 UMD body 立即执行，customElements.define("math-field", ...)
@@ -682,8 +682,8 @@ class HistoryStore {
 
     clear() {
         this.items = [];
-        // saveLocalStorage 没有 remove，用空字符串代替
-        try { this.app.saveLocalStorage(this.storageKey, ""); } catch { /* ignore */ }
+        // saveLocalStorage 的 null 形参会真正删除条目（@since 1.8.7）
+        try { this.app.saveLocalStorage(this.storageKey, null); } catch { /* ignore */ }
     }
 }
 
@@ -2414,6 +2414,17 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         super(app, plugin);
     }
 
+    /**
+     * Obsidian 1.13+ 的声明式 settings API —— 当前返回 []，让 display() 接管渲染。
+     *   原因：minAppVersion 1.10.0，老版本 Obsidian 没有声明式渲染支持。
+     *   副作用：1.13+ 用户的设置搜索框搜不到我们的字段（但 display() 渲染的 UI 还在）。
+     *   后续如要让搜索生效，minAppVersion 升到 1.13.0 + 把这个方法改成返回非空 definitions 即可。
+     */
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return [];
+    }
+
+    /* ============== display() —— 1.10.x 兼容路径 ============== */
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
@@ -2457,8 +2468,6 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         const section = parent.createDiv({ cls: "latex-input-section" });
         new Setting(section).setName("🤖 AI 识别").setHeading();
 
-        // 升级提示横幅（仅当检测到旧字段迁移时显示一次，新启动就消失）
-        // 这里用一个 always-shown 的小提示说明默认是 MiniMax
         const banner = section.createDiv({ cls: "latex-input-info-box" });
         const bannerTitle = banner.createDiv({ cls: "latex-input-info-box-title" });
         bannerTitle.setText("💡 默认使用 MiniMax 视觉 API（OpenAI 兼容协议），可改成任意兼容服务");
@@ -2469,10 +2478,8 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         ul.createEl("li", { text: "本地 Ollama（需支持视觉的模型，如 llava）：http://localhost:11434/v1" });
         ul.createEl("li", { text: "其他任意 OpenAI 兼容服务：填 Base URL + API Key + 模型名" });
 
-        // 直接渲染唯一的 custom 配置卡
         this.renderCustomCard(section);
 
-        // 底部使用说明
         this.makeInfoBox(section, "💡 截图 / 图片识别用法", [
             "用系统截图工具截图（Win+Shift+S / macOS Cmd+Shift+4 / Snipaste 等）→ 截图进入剪贴板",
             "按 Ctrl+Shift+S，或打开主面板点「📷 截图识别」/「🖼️ 选择图片」，或点左侧栏相机图标",
@@ -2485,7 +2492,6 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         const settings = this.plugin.getSettings();
         const card = parent.createDiv({ cls: "latex-input-engine-card is-current" });
 
-        // Header
         const header = card.createDiv({ cls: "latex-input-engine-card-header" });
         const titleArea = header.createDiv({ cls: "latex-input-engine-card-title" });
         titleArea.createEl("strong", { text: "AI 视觉模型（OpenAI 兼容）" });
@@ -2505,7 +2511,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         // 1) Base URL
         const baseUrlSetting = new Setting(card)
             .setName("Base URL")
-            .setDesc("OpenAI 兼容 API 的根地址，必须以 /v1 结尾。默认是 MiniMax。可改成月之暗面 / 智谱 / Qwen-VL / Ollama 等。");
+            .setDesc("OpenAI 兼容 API 的根地址，必须以 /v1 结尾。默认是 MiniMax。");
         const baseUrlInput = baseUrlSetting.controlEl.createEl("input", {
             type: "text",
             cls: "latex-input-url-input",
@@ -2521,10 +2527,10 @@ class LaTeXInputSettingTab extends PluginSettingTab {
             })();
         });
 
-        // 2) API Key
+        // 2) API Key（密码眼睛切换）
         const keySetting = new Setting(card)
             .setName("API Key")
-            .setDesc("对应 Base URL 的服务提供的 API key。MiniMax 注册：https://platform.minimax.io/");
+            .setDesc("对应 Base URL 的服务提供的 API key。");
         this.attachPasswordInput(keySetting, settings.customApiKey, "sk-...", async (v) => {
             settings.customApiKey = v;
             await this.plugin.saveSettings();
@@ -2534,7 +2540,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         // 3) 模型名称
         const modelSetting = new Setting(card)
             .setName("模型名称")
-            .setDesc("必须选支持视觉的模型（名字含 vision / VL / multimodal）。如果识别一直失败，先点「列出可用模型」看看，或去对应服务文档查支持图像的模型。");
+            .setDesc("必须选支持视觉的模型（名字含 vision / VL / multimodal）。");
         const modelInput = modelSetting.controlEl.createEl("input", {
             type: "text",
             cls: "latex-input-url-input",
@@ -2575,7 +2581,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
                 this.display();
             }))
-            .addButton(btn => btn.setButtonText("🗑 清空凭据").setDestructive().onClick(async () => {
+            .addButton(btn => btn.setButtonText("🗑 清空凭据").setClass("mod-warning").onClick(async () => {
                 const ok = await new ConfirmModal(this.app, "清空 API Key / Base URL / 模型名？").openAndWait();
                 if (!ok) return;
                 settings.customApiKey = "";
@@ -2585,7 +2591,6 @@ class LaTeXInputSettingTab extends PluginSettingTab {
                 this.display();
             }));
 
-        // 怎么用（折叠 info）
         this.makeCollapsibleInfo(card, "💡 怎么用 MiniMax（默认）", [
             "去 platform.minimax.io 注册账号",
             "顶部「API Keys」创建一个 key（建议设置余额提醒）",
@@ -2611,7 +2616,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         new Setting(section)
             .setName("清空全部凭据")
             .setDesc("把 API Key 清空（Base URL 和模型名恢复默认）。下次截图识别前需要重新配置。")
-            .addButton(btn => btn.setButtonText("清空全部凭据").setDestructive().onClick(async () => {
+            .addButton(btn => btn.setButtonText("清空全部凭据").setClass("mod-warning").onClick(async () => {
                 const ok = await new ConfirmModal(this.app, "确定清空所有凭据？此操作不可撤销。").openAndWait();
                 if (!ok) return;
                 const s = this.plugin.getSettings();
@@ -2625,10 +2630,10 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         new Setting(section)
             .setName("清空输入历史")
             .setDesc("清空主面板右侧「历史记录」里的全部条目。")
-            .addButton(btn => btn.setButtonText("清空历史").setDestructive().onClick(() => {
+            .addButton(btn => btn.setButtonText("清空历史").setClass("mod-warning").onClick(() => {
                 void new ConfirmModal(this.app, "清空全部历史记录？").openAndWait().then((ok) => {
                     if (!ok) return;
-                    try { this.app.saveLocalStorage("latex-input.history.v1", ""); } catch { /* ignore */ }
+                    try { this.app.saveLocalStorage("latex-input.history.v1", null); } catch { /* ignore */ }
                     new Notice("历史已清空 ✓");
                 });
             }));
@@ -2642,7 +2647,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         const card = section.createDiv({ cls: "latex-input-about-card" });
         const top = card.createDiv({ cls: "latex-input-about-row" });
         top.createEl("strong", { text: "LaTeX Input" });
-        top.createSpan({ text: "  v0.1.0", cls: "latex-input-about-version" });
+        top.createSpan({ text: "  v" + this.plugin.manifest.version, cls: "latex-input-about-version" });
         const aboutDesc = card.createDiv({ cls: "latex-input-about-desc" });
         aboutDesc.setText("AxMath 风格的公式输入面板 + 截图识别");
         const aboutMeta = card.createDiv({ cls: "latex-input-about-meta" });
@@ -2651,7 +2656,6 @@ class LaTeXInputSettingTab extends PluginSettingTab {
 
     /* ============== 通用辅助 ============== */
 
-    /** 在一个 Setting 的右侧 control 区里塞一个密码输入 + 眼睛切换 */
     private attachPasswordInput(setting: Setting, value: string, placeholder: string, onChange: (v: string) => Promise<void>) {
         const wrap = setting.controlEl.createDiv({ cls: "latex-input-pwd-wrap" });
         const input = wrap.createEl("input", {
@@ -2690,29 +2694,6 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         });
     }
 
-    /** 在容器里追加一个 URL 输入 Setting（URL 不需要眼睛切换）—— v1.2 起未使用，保留以备将来 */
-    private _attachUrlInput_unused(parent: HTMLElement, value: string, placeholder: string, onChange: (v: string) => Promise<void>): void {
-        const s = new Setting(parent)
-            .setName("URL")
-            .setDesc("默认 http://127.0.0.1:8000；改端口时同步修改这里。");
-        const input = s.controlEl.createEl("input", {
-            type: "text",
-            cls: "latex-input-url-input",
-            attr: { placeholder, spellcheck: "false" },
-        });
-        input.value = value;
-        let timer: number | null = null;
-        const debouncedSave = () => {
-            if (timer) window.clearTimeout(timer);
-            timer = window.setTimeout(() => onChange(input.value), 400);
-        };
-        input.addEventListener("input", debouncedSave);
-        input.addEventListener("change", () => {
-            if (timer) window.clearTimeout(timer);
-            void onChange(input.value);
-        });
-    }
-
     private refreshBadge(badge: HTMLElement, configured: boolean) {
         badge.textContent = configured ? "✓ 已配置" : "未配置";
         badge.removeClass("is-ok", "is-warn");
@@ -2726,18 +2707,17 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         el.addClass(r.ok ? "is-ok" : "is-err");
     }
 
-    /** 顶部对齐、醒目的提示框（用于"截图识别用法"等） */
     private makeInfoBox(parent: HTMLElement, title: string, items: string[]) {
         const box = parent.createDiv({ cls: "latex-input-info-box" });
-        const infoTitle = box.createDiv({ cls: "latex-input-info-box-title" });
-        infoTitle.setText(title);
+        const boxTitle = box.createDiv({ cls: "latex-input-info-box-title" });
+        boxTitle.setText(title);
         const ol = box.createEl("ol");
         for (const it of items) ol.createEl("li", { text: it });
     }
 
-    /** 引擎卡内嵌的折叠 info（用原生 <details>） */
     private makeCollapsibleInfo(parent: HTMLElement, title: string, items: string[]) {
         const det = parent.createEl("details", { cls: "latex-input-details" });
+        det.createEl("summary", { text: title });
         const ol = det.createEl("ol");
         for (const it of items) ol.createEl("li", { text: it });
     }

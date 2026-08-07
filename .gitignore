@@ -16,6 +16,13 @@ _dbg*.txt
 # Local code-analysis tool artifacts
 .codegraph/
 
+# Throwaway probe / debug scratch
+.probe/
+
+# Private audit / review notes — not for the public repo
+AUDIT-*.md
+REVIEW-*.md
+
 # Editor / OS
 .DS_Store
 Thumbs.db

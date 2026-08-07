@@ -7,7 +7,7 @@
 一个为 Obsidian 设计的 LaTeX 公式输入插件。点选符号面板自动生成源码、实时预览、插入到当前笔记；支持**屏幕选区截图识别**和**剪贴板图片识别**，公式录入快人一步。
 
 ![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-7c3aed?style=flat-square&logo=obsidian&logoColor=white)
-![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-0.1.8-blue?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Desktop-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange?style=flat-square)
 
@@ -18,8 +18,8 @@
 - 🎯 **点选符号** — 10 个分类、~250 条符号，点击即插入到光标位置
 - 👀 **实时预览** — 所见即所得，所写即所得
 - ⌨️ **可编辑源码** — 源码框支持 LaTeX 微调
-- 📸 **截图识别公式** — `Ctrl+Shift+S` 拖拽选区，OCR 自动转 LaTeX
-- 📋 **剪贴板识别** — 截图后 `Ctrl+Shift+R` 直接读图
+- 📸 **截图识别公式** — 按已绑定的快捷键（或点左侧相机图标）拖拽选区，OCR 自动转 LaTeX
+- 📋 **剪贴板识别** — 按已绑定的快捷键（或点左侧剪贴板图标）直接读图
 - 🕘 **历史记录** — 自动持久化，可载入继续编辑
 - 🌗 **暗色适配** — 完美跟随 Obsidian 主题
 - 📦 **零外部依赖** — MathLive 已内联进 `main.js`
@@ -50,18 +50,17 @@ npm run build
 
 ## ⌨️ 快捷键
 
-| 操作 | 快捷键 |
-| --- | --- |
-| 插入行内公式 `$...$` | `Ctrl + Shift + L` |
-| 插入行间公式 `$$...$$` | `Ctrl + Shift + M` |
-| 截图识别（选区，行内） | `Ctrl + Shift + S` |
-| 截图识别（选区，行间） | `Alt + Shift + S` |
-| 剪贴板识别（行内） | `Ctrl + Shift + R` |
-| 剪贴板识别（行间） | `Alt + Shift + R` |
-| 面板内插入到笔记 | `Ctrl + Enter` |
-| 关闭面板 | `Esc` |
+**无默认快捷键** —— 避免与你已有的热键冲突，需要自行绑定：
 
-> 也可点击左侧栏 **σ** 图标打开面板。`设置 → 快捷键` 可重新绑定。
+1. 打开 Obsidian **设置 → 快捷键**
+2. 搜索 `LaTeX Input`
+3. 绑定以下 6 个命令中你想要的部分：
+   - 插入 LaTeX 公式（行内 / 行间）
+   - 截图识别公式（行内 / 行间）
+   - 剪贴板识别公式（行内 / 行间）
+4. 面板内可选热键：`Ctrl + Enter` 插入、`Esc` 关闭。
+
+> 左侧栏 **σ** 图标永远能打开面板，不依赖快捷键。
 
 
 https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
@@ -72,12 +71,12 @@ https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
 
 https://github.com/user-attachments/assets/da416d31-9908-4a8f-b58d-0f04f32faa7d
 
-按 `Ctrl+Shift+S`（行内）/ `Alt+Shift+S`（行间）：
+按已绑定的截图识别快捷键（行内 / 行间）：
 
 1. **屏幕共享可用时** — 弹出全屏遮罩，**拖拽框选公式区域** → 释放后自动 OCR 并插入
 2. **屏幕共享不可用时** — 自动切到「剪贴板轮询」模式，右下角小浮窗提示；任意方式截图后**自动检测 + 自动识别 + 自动插入**
 
-按 `Ctrl+Shift+R` / `Alt+Shift+R` 直接读取剪贴板中的图片。
+按已绑定的剪贴板识别快捷键直接读取剪贴板中的图片。
 
 > 首次使用需在插件设置里配置 OCR 服务（API 地址、Key、模型名）。
 

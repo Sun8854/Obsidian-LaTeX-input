@@ -1,6 +1,6 @@
 {
   "name": "obsidian-latex-input",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "description": "AxMath-style LaTeX formula input panel for Obsidian (with MathLive editor, bundled)",
   "main": "main.js",
   "scripts": {
@@ -17,7 +17,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "esbuild": "^0.20.0",
-    "obsidian": "^1.5.7",
+    "obsidian": "^1.13.0",
     "tslib": "^2.6.2",
     "typescript": "^5.3.3"
   }

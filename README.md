@@ -2,12 +2,12 @@
 
 **English** | [中文](./README.zh.md)
 
-> An  LaTeX formula input panel for Obsidian — with a visual editor powered by MathLive and a quick-insert symbol palette. Default hotkeys: `Ctrl+Shift+L` (inline) / `Ctrl+Shift+M` (display).
+> An LaTeX formula input panel for Obsidian — with a visual editor powered by MathLive and a quick-insert symbol palette. **No default hotkeys — bind your own in Settings → Hotkeys to avoid conflicts with your existing setup.**
 
 A LaTeX formula input plugin for Obsidian. Click symbols from the palette to auto-generate source, preview live, and insert into the current note; also supports **screen-selection OCR** and **clipboard-image OCR** so you can type formulas faster.
 
 ![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-7c3aed?style=flat-square&logo=obsidian&logoColor=white)
-![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-0.1.8-blue?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Desktop-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/license-GPL--3.0-orange?style=flat-square)
 
@@ -18,8 +18,8 @@ A LaTeX formula input plugin for Obsidian. Click symbols from the palette to aut
 - 🎯 **Click-to-insert symbols** — 10 categories, ~250 symbols. Click to insert at the cursor.
 - 👀 **Live preview** — WYSIWYG-style rendering as you type.
 - ⌨️ **Editable source** — Tweak the raw LaTeX directly in the source box.
-- 📸 **Screenshot OCR** — `Ctrl+Shift+S` to drag-select a region, auto-converted to LaTeX.
-- 📋 **Clipboard OCR** — `Ctrl+Shift+R` reads the image currently in your clipboard.
+- 📸 **Screenshot OCR** — press the bound hotkey (or click the camera ribbon icon) to drag-select a region, auto-converted to LaTeX.
+- 📋 **Clipboard OCR** — press the bound hotkey (or click the clipboard ribbon icon) to read the image currently in your clipboard.
 - 🕘 **History** — Persisted automatically; reload any past formula to keep editing.
 - 🌗 **Dark-mode friendly** — Follows your Obsidian theme automatically.
 - 📦 **Zero external dependencies** — MathLive is bundled into `main.js`.
@@ -50,18 +50,17 @@ The build output `main.js` lives at the repo root. Deploy it together with `mani
 
 ## ⌨️ Hotkeys
 
-| Action | Hotkey |
-| --- | --- |
-| Insert inline formula `$...$` | `Ctrl + Shift + L` |
-| Insert display formula `$$...$$` | `Ctrl + Shift + M` |
-| Screenshot OCR (region, inline) | `Ctrl + Shift + S` |
-| Screenshot OCR (region, display) | `Alt + Shift + S` |
-| Clipboard OCR (inline) | `Ctrl + Shift + R` |
-| Clipboard OCR (display) | `Alt + Shift + R` |
-| Insert formula from panel into note | `Ctrl + Enter` |
-| Close panel | `Esc` |
+**No default hotkeys** — to avoid conflicts with your existing setup, you'll need to bind them yourself:
 
-> You can also open the panel via the **σ** icon in the left ribbon. Rebind any hotkey in **Settings → Hotkeys**.
+1. **Settings → Hotkeys** in Obsidian
+2. Search for `LaTeX Input`
+3. Bind any of the 6 commands:
+   - Insert LaTeX formula (inline / display)
+   - Screenshot OCR (inline / display)
+   - Clipboard OCR (inline / display)
+4. Optional in-panel hotkeys: `Ctrl + Enter` to insert, `Esc` to close.
+
+> The **σ** icon in the left ribbon always opens the panel — no hotkey required.
 
 https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
 
@@ -71,12 +70,12 @@ https://github.com/user-attachments/assets/f74008e1-38ad-44da-a97d-2ad2be519e83
 
 https://github.com/user-attachments/assets/da416d31-9908-4a8f-b58d-0f04f32faa7d
 
-Press `Ctrl+Shift+S` (inline) or `Alt+Shift+S` (display):
+Press the bound hotkey for screenshot OCR (inline / display):
 
 1. **When screen capture is available** — a full-screen overlay appears; **drag to select the formula region**; release to auto-OCR and insert.
 2. **When screen capture is unavailable** — it falls back to **clipboard polling** with a small floating hint in the bottom-right; any screenshot you take is **auto-detected, auto-OCR'd, and auto-inserted**.
 
-Press `Ctrl+Shift+R` / `Alt+Shift+R` to read the image currently in your clipboard.
+Press the bound hotkey for clipboard OCR to read the image currently in your clipboard.
 
 > First-time use requires configuring your OCR service in the plugin settings (API endpoint, key, model name).
 
