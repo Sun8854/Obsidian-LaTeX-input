@@ -207,7 +207,7 @@ async function readImageFromClipboard(): Promise<Blob | null> {
 export interface OcrResult {
     latex: string;
     confidence?: number;
-    raw: any;
+    raw: unknown;
 }
 
 /* ===================================================================
@@ -354,25 +354,18 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
     }
 
     const json = res.json;
-    // 调试日志：把原始响应打到 console，方便诊断
-    console.log("[LaTeX Input] OCR raw response:", JSON.stringify(json).slice(0, 800));
-
     const choice = json.choices?.[0];
     const message = choice?.message;
 
-    // DeepSeek R1 / 推理模型会在 reasoning_content 里放思考过程
-    // （不应作为答案，但记录到 console 方便调试）
-    if (message?.reasoning_content) {
-        console.log("[LaTeX Input] OCR reasoning_content (ignored):",
-            String(message.reasoning_content).slice(0, 400));
-    }
+    // DeepSeek R1 / 推理模型会在 reasoning_content 里放思考过程 —— 忽略，不当答案
+    const _ = message?.reasoning_content; // intentionally unused
 
     // 取 content（实际答案）
     let latex = "";
     const content = message?.content;
     if (typeof content === "string") {
         latex = content;
-    } else if (ArrayIsArray(content)) {
+    } else if (Array.isArray(content)) {
         for (const block of content) {
             if (block?.type === "text" && typeof block.text === "string") {
                 latex = block.text;
@@ -383,12 +376,7 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
     return (latex || "").trim();
 }
 
-/* ===================================================================
- * 简易类型守卫（不要引出整个 lodash）
- * =================================================================== */
-function ArrayIsArray(x: any): x is any[] {
-    return Array.isArray(x);
-}
+// Array.isArray 是 TS 自带类型守卫（(x: any) => x is any[]），直接用即可，不需要包装
 
 /* ===================================================================
  * 验证返回的字符串是否像 LaTeX
@@ -503,29 +491,31 @@ async function prepareImageForOCR(blob: Blob): Promise<string> {
         height = Math.round(height * scale);
     }
 
-    // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 是离屏渲染，不挂 DOM
-    const canvas = document.createElement("canvas");
+    const canvas = document.body.createEl("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return dataUrl; // fallback
+    if (!ctx) { canvas.remove(); return dataUrl; } // fallback
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
-    return canvas.toDataURL("image/png");
+    const url = canvas.toDataURL("image/png");
+    canvas.remove();
+    return url;
 }
 
 function addWhiteBackground(img: HTMLImageElement, width: number, height: number): string {
-    // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 是离屏渲染，不挂 DOM
-    const canvas = document.createElement("canvas");
+    const canvas = document.body.createEl("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return img.src;
+    if (!ctx) { canvas.remove(); return img.src; }
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0);
-    return canvas.toDataURL("image/png");
+    const url = canvas.toDataURL("image/png");
+    canvas.remove();
+    return url;
 }
 
 /* ===================================================================
@@ -762,7 +752,7 @@ class LaTeXInputModal extends Modal {
 
     private pasteHandler = (e: ClipboardEvent) => this.handlePaste(e);
 
-    constructor(app: any, editor: Editor, history: HistoryStore, settings: LaTeXInputSettings, initial?: string, mode?: Mode) {
+    constructor(app: App, editor: Editor, history: HistoryStore, settings: LaTeXInputSettings, initial?: string, mode?: Mode) {
         super(app);
         this.editor = editor;
         this.history = history;
@@ -1065,7 +1055,7 @@ class LaTeXInputModal extends Modal {
         // 即使 MathLive 还没加载，也先创建元素（loadMathLive 完成后会自动升级）
         this.mathFieldEl = previewInner.createEl("math-field", { cls: "latex-input-math-field" });
         // 给一个最小尺寸，避免加载前塌陷
-        (this.mathFieldEl as HTMLElement).setCssStyles({
+        this.mathFieldEl.setCssStyles({
             minHeight: "80px",
             display: "block",
         });
@@ -1136,7 +1126,7 @@ class LaTeXInputModal extends Modal {
         const histTools = historyWrap.createDiv({ cls: "latex-input-history-tools" });
         const clearHistBtn = histTools.createEl("button", { text: "清空历史", cls: "latex-input-mini-btn" });
         clearHistBtn.addEventListener("click", () => {
-            new ConfirmModal(this.app, "清空全部历史记录？").openAndWait().then((ok) => {
+            void new ConfirmModal(this.app, "清空全部历史记录？").openAndWait().then((ok) => {
                 if (!ok) return;
                 this.history.clear();
                 this.renderHistory();
@@ -1886,8 +1876,7 @@ class ScreenshotOcrSession {
         if (!this.displayStream) return null;
 
         // 创建 video 元素捕获一帧
-        // eslint-disable-next-line obsidianmd/prefer-create-el — video 元素不进 DOM
-        const video = document.createElement("video");
+        const video = document.body.createEl("video");
         video.srcObject = this.displayStream;
         video.muted = true;
         video.playsInline = true;
@@ -1907,17 +1896,16 @@ class ScreenshotOcrSession {
         const screenH = video.videoHeight || window.screen.height;
 
         // 画到全屏 canvas
-        // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 离屏渲染
-        const fullCanvas = document.createElement("canvas");
+        const fullCanvas = document.body.createEl("canvas");
         fullCanvas.width = screenW;
         fullCanvas.height = screenH;
         const fullCtx = fullCanvas.getContext("2d");
         if (!fullCtx) return null;
         fullCtx.drawImage(video, 0, 0, screenW, screenH);
-
-        // 停止视频流（节省资源）
+        // video 用完即弃（srcObject 释放后会自动 paused）
         video.pause();
         video.srcObject = null;
+        video.remove();
 
         // 选区坐标（视口坐标）→ 屏幕坐标
         // 处理 DPI 缩放 + 多显示器（简单处理：假设选区在主显示器内）
@@ -1929,17 +1917,19 @@ class ScreenshotOcrSession {
         const sh = Math.min(screenH - sy, Math.round(h * scaleY));
         if (sw <= 0 || sh <= 0) return null;
 
-        // 裁剪
-        // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 离屏渲染
-        const cropCanvas = document.createElement("canvas");
+        // 裁剪（fullCanvas 用完即弃）
+        const cropCanvas = document.body.createEl("canvas");
+        // cropCanvas 会异步 toBlob，fullCanvas 可立即清掉
+        // （下面对 cropCanvas.toBlob 调用，fullCanvas 不再被使用）
         cropCanvas.width = sw;
         cropCanvas.height = sh;
         const cropCtx = cropCanvas.getContext("2d");
         if (!cropCtx) return null;
         cropCtx.drawImage(fullCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+        fullCanvas.remove();
 
         return new Promise<Blob | null>((resolve) => {
-            cropCanvas.toBlob((b) => resolve(b), "image/png");
+            cropCanvas.toBlob((b) => { cropCanvas.remove(); resolve(b); }, "image/png");
         });
     }
 
@@ -1973,7 +1963,7 @@ class QuickOcrSession {
     private containerEl: HTMLElement | null = null;
     private panelEl: HTMLElement | null = null;
     private hintEl: HTMLElement | null = null;
-    private pollTimer: any = null;
+    private pollTimer: number | null = null;
     private lastImageHash: string = "";
     private isActive = false;
     private hintVisible = false;
@@ -2272,7 +2262,10 @@ export default class LaTeXInputPlugin extends Plugin {
     }
 
     async loadSettings() {
-        const loaded: any = await this.loadData();
+        // loadData() 在没存过数据时返回 null，强类型为 settings 或迁移期的松散对象
+        const raw = await this.loadData();
+        const loaded: (Partial<LaTeXInputSettings> & Record<string, unknown>) | null =
+            raw && typeof raw === "object" ? raw as Partial<LaTeXInputSettings> & Record<string, unknown> : null;
         // 迁移：v1.0/v1.1 的 ocrEngine / minimaxApiKey
         //   → v1.2 的 customApiKey / customBaseUrl / customModel
         //   触发条件：loaded 里有任意旧字段
@@ -2285,10 +2278,10 @@ export default class LaTeXInputPlugin extends Plugin {
                 // 1) ocrEngine 归并为 custom
                 loaded.ocrEngine = "custom";
                 // 2) 旧 MiniMax API key + model → custom（仅在 custom 为空时迁移，避免覆盖用户已填的新值）
-                if (loaded.minimaxApiKey && !loaded.customApiKey) {
+                if (typeof loaded.minimaxApiKey === "string" && !loaded.customApiKey) {
                     loaded.customApiKey = loaded.minimaxApiKey;
                 }
-                if (loaded.minimaxModel && (!loaded.customModel || loaded.customModel === DEFAULT_SETTINGS.customModel)) {
+                if (typeof loaded.minimaxModel === "string" && (!loaded.customModel || loaded.customModel === DEFAULT_SETTINGS.customModel)) {
                     loaded.customModel = loaded.minimaxModel;
                 }
                 // 3) 旧字段清掉
@@ -2446,10 +2439,12 @@ class LaTeXInputSettingTab extends PluginSettingTab {
             .setName("快捷键")
             .setDesc("共 6 个命令（行内 / 行间公式、截图识别行内 / 行间、剪贴板识别行内 / 行间）。默认无快捷键 —— 避免与你的其它热键冲突。请在 Obsidian「设置 → 快捷键」中搜索「LaTeX Input」自行绑定。")
             .addButton(btn => btn.setButtonText("打开快捷键设置").onClick(() => {
-                // @ts-ignore
-                this.app.setting.open();
-                // @ts-ignore
-                this.app.setting.openTabById("hotkeys");
+                // Obsidian 的 App 类型未公开 setting 字段，但运行时可用 —— 用 unknown 中转做安全断言
+                const setting = (this.app as unknown as {
+                    setting: { open(): void; openTabById(id: string): void };
+                }).setting;
+                setting.open();
+                setting.openTabById("hotkeys");
             }));
 
         new Setting(section)
@@ -2631,7 +2626,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
             .setName("清空输入历史")
             .setDesc("清空主面板右侧「历史记录」里的全部条目。")
             .addButton(btn => btn.setButtonText("清空历史").setDestructive().onClick(() => {
-                new ConfirmModal(this.app, "清空全部历史记录？").openAndWait().then((ok) => {
+                void new ConfirmModal(this.app, "清空全部历史记录？").openAndWait().then((ok) => {
                     if (!ok) return;
                     try { this.app.saveLocalStorage("latex-input.history.v1", ""); } catch { /* ignore */ }
                     new Notice("历史已清空 ✓");
@@ -2683,7 +2678,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
             }
         });
 
-        let saveTimer: any = null;
+        let saveTimer: number | null = null;
         const debouncedSave = () => {
             if (saveTimer) window.clearTimeout(saveTimer);
             saveTimer = window.setTimeout(() => onChange(input.value), 400);
@@ -2706,7 +2701,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
             attr: { placeholder, spellcheck: "false" },
         });
         input.value = value;
-        let timer: any = null;
+        let timer: number | null = null;
         const debouncedSave = () => {
             if (timer) window.clearTimeout(timer);
             timer = window.setTimeout(() => onChange(input.value), 400);

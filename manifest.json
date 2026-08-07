@@ -2,8 +2,8 @@
   "id": "latex-input",
   "name": "LaTeX Input",
   "version": "0.1.5",
-  "minAppVersion": "1.4.0",
-  "description": "Visual LaTeX formula input panel powered by MathLive. Click symbols to compose LaTeX with live preview. Includes screen-selection OCR and clipboard image recognition. 6 commands available (inline/block formulas, screenshot OCR, clipboard OCR) — assign your own hotkeys in Settings → Hotkeys.",
+  "minAppVersion": "1.5.0",
+  "description": "Visual LaTeX input panel (MathLive) with click-to-insert symbols, live preview, screenshot OCR, and clipboard image OCR. 6 commands — bind your own hotkeys in Settings → Hotkeys.",
   "author": "Sun",
   "authorUrl": "",
   "isDesktopOnly": true
