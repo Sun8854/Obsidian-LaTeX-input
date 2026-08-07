@@ -3,7 +3,7 @@
   "name": "LaTeX Input",
   "version": "0.1.4",
   "minAppVersion": "1.4.0",
-  "description": "Visual LaTeX formula input panel powered by MathLive. Click symbols to compose LaTeX with live preview. Includes screen-selection OCR and clipboard image recognition. Default hotkeys: Ctrl+Shift+L (inline) / Ctrl+Shift+M (display).",
+  "description": "Visual LaTeX formula input panel powered by MathLive. Click symbols to compose LaTeX with live preview. Includes screen-selection OCR and clipboard image recognition. 6 commands available (inline/block formulas, screenshot OCR, clipboard OCR) — assign your own hotkeys in Settings → Hotkeys.",
   "author": "Sun",
   "authorUrl": "",
   "isDesktopOnly": true

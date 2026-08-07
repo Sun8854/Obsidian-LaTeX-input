@@ -1,6 +1,6 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
+import { builtinModules as builtins } from "node:module";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 

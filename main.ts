@@ -7,7 +7,7 @@
  *   - HistoryStore      —— 简单的 localStorage 持久化
  */
 
-import { App, Component, Editor, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { App, Component, Editor, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlResponse, Setting } from "obsidian";
 import { SYMBOL_CATEGORIES, parseInsert } from "./symbols";
 // MathLive JS 由 esbuild 虚拟模块以「ES module」形式 bundle 进 main.js（见 esbuild.config.mjs）。
 //   副作用：模块加载时 MathLive 的 UMD body 立即执行，customElements.define("math-field", ...)
@@ -43,11 +43,35 @@ declare global {
     interface Window {
         [MATHLIVE_VERSION_KEY]?: string;
     }
+    // 让 createEl("math-field", ...) 和 document.createElement("math-field") 都能推导出 MathFieldElement
+    interface HTMLElementTagNameMap {
+        "math-field": MathFieldElement;
+    }
 }
 
 function isMathLiveLoaded(): boolean {
     // bundled import 已经把 <math-field> custom element 注册到 globalThis
     return !!customElements.get("math-field");
+}
+
+/**
+ * MathLive 的 <math-field> 元素对外暴露的方法/字段。
+ *   MathLive 没有官方 TS 类型；这里只声明我们实际用到的子集。
+ *   自定义字段 _placeholder 是 LaTeX Input 内部挂的占位 div（不是 MathLive 的）。
+ */
+interface MathFieldElement extends HTMLElement {
+    value: string;
+    getValue(mode?: "latex" | "math-json" | "ascii-math"): string | undefined;
+    insert(latex: string): void;
+    focus(): void;
+    setOptions(options: Record<string, unknown>): void;
+    executeCommand(command: string): unknown;
+    _placeholder?: HTMLElement;
+}
+
+/** 类型守卫：检查一个 HTMLElement 是不是已 upgrade 的 <math-field> */
+function isMathField(el: HTMLElement | null | undefined): el is MathFieldElement {
+    return !!el && el.tagName?.toLowerCase() === "math-field";
 }
 
 /**
@@ -75,16 +99,16 @@ export function loadMathLive(): Promise<void> {
  *
  * 注意：直接 `mf.value = ...` 会触发 MathLive 的 setValue（insertionMode: "replaceAll"），
  *   1) 整段重写 model，selection 被重置（光标跳到末尾）
- *   2) setValue 内部通过 setTimeout(0) 派发合成 `input` 事件到 host
+ *   2) setValue 内部通过 window.setTimeout(0) 派发合成 `input` 事件到 host
  *   3) 如果同步读 mf.getValue()，可能拿不到最新值（要等下一个 microtask）
  *
  * 调用方在写完之后应该挂一个短期屏蔽标志，阻止合成的 input 事件回写到 buffer。
  * `syncMathFieldFromBuffer` 内部已经包了；`bootstrapMathField` 也是。直接调用本函数要自己处理。
  */
 function writeMathField(mf: HTMLElement, latex: string, fallback: () => void) {
-    if (isMathLiveLoaded() && mf && (mf as any).tagName?.toLowerCase() === "math-field") {
+    if (isMathLiveLoaded() && isMathField(mf)) {
         try {
-            (mf as any).value = latex ?? "";
+            mf.value = latex ?? "";
             return;
         } catch (e) {
             console.warn("[LaTeX Input] writeMathField 失败，回退:", e);
@@ -94,9 +118,9 @@ function writeMathField(mf: HTMLElement, latex: string, fallback: () => void) {
 }
 
 function readMathField(mf: HTMLElement, fallback: string): string {
-    if (isMathLiveLoaded() && mf && (mf as any).tagName?.toLowerCase() === "math-field") {
+    if (isMathLiveLoaded() && isMathField(mf)) {
         try {
-            const v = (mf as any).getValue?.("latex");
+            const v = mf.getValue?.("latex");
             if (typeof v === "string") return v;
         } catch (e) {
             console.warn("[LaTeX Input] readMathField 失败，回退:", e);
@@ -106,16 +130,16 @@ function readMathField(mf: HTMLElement, fallback: string): string {
 }
 
 function insertToMathField(mf: HTMLElement, latex: string, fallback: () => void) {
-    if (isMathLiveLoaded() && mf && (mf as any).tagName?.toLowerCase() === "math-field") {
+    if (isMathLiveLoaded() && isMathField(mf)) {
         try {
-            (mf as any).insert(latex ?? "");
-            // 注意：mf.insert() 内部用 setTimeout(0) 派发合成的 `input` 事件；
+            mf.insert(latex ?? "");
+            // 注意：mf.insert() 内部用 window.setTimeout(0) 派发合成的 `input` 事件；
             //   如果我们立即 focus，会和 MathLive 的 onSelectionDidChange 抢焦点，
             //   有概率把 MathLive 的内部 state 搅乱。延迟到下一个 microtask 让它先消化完。
             // 另外：mf.insert() 不传 {silenceNotifications:true}，所以 input 事件会派发，
             //   我们的监听器会同步更新 buffer 和源码框 —— 完美。
-            setTimeout(() => {
-                try { (mf as any).focus?.(); } catch (_) { /* ignore */ }
+            window.setTimeout(() => {
+                try { mf.focus?.(); } catch { /* ignore */ }
             }, 0);
             return;
         } catch (e) {
@@ -290,7 +314,8 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
     // baseUrl 容错：去掉尾部 /，自动补 /chat/completions
     const base = (baseUrl || "https://api.minimax.chat/v1").trim().replace(/\/+$/, "") || "https://api.minimax.chat/v1";
     const url = `${base}/chat/completions`;
-    const res = await fetch(url, {
+    const res: RequestUrlResponse = await requestUrl({
+        url,
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -310,10 +335,11 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
                 },
             ],
         }),
+        throw: false,
     });
 
-    if (!res.ok) {
-        const text = await res.text();
+    if (res.status < 200 || res.status >= 300) {
+        const text = res.text;
         if (res.status === 401) throw new Error("API key 无效或过期（401）");
         if (res.status === 429) throw new Error("触发限流，等一会儿再试（429）");
         if (res.status === 402 || res.status === 403) throw new Error("账户欠费或无权限（" + text.slice(0, 150) + "）");
@@ -327,7 +353,7 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
         throw new Error(`API ${res.status}：${text.slice(0, 200)}`);
     }
 
-    const json = await res.json();
+    const json = res.json;
     // 调试日志：把原始响应打到 console，方便诊断
     console.log("[LaTeX Input] OCR raw response:", JSON.stringify(json).slice(0, 800));
 
@@ -418,6 +444,17 @@ function extractLatex(raw: string): string {
     return text;
 }
 
+
+/**
+ * 把任意 catch 到的 unknown 值规范化成可读字符串。
+ *   替代 `e?.message || e`（这种写法在 e: any / e: unknown 下都不可靠）
+ *   行为：
+ *     - Error（含子类）→ e.message
+ *     - 其它 → String(e)
+ */
+function errMsg(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+}
 /* ===================================================================
  * 图像预处理：resize 到 [512, 2048] 区间 + 加白底
  *   - 太小（< 512）：模型看不清，向上 resize
@@ -432,7 +469,7 @@ async function prepareImageForOCR(blob: Blob): Promise<string> {
     const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
+        reader.onerror = () => reject(new Error(reader.error?.message ?? "FileReader failed"));
         reader.readAsDataURL(blob);
     });
 
@@ -466,6 +503,7 @@ async function prepareImageForOCR(blob: Blob): Promise<string> {
         height = Math.round(height * scale);
     }
 
+    // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 是离屏渲染，不挂 DOM
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -478,6 +516,7 @@ async function prepareImageForOCR(blob: Blob): Promise<string> {
 }
 
 function addWhiteBackground(img: HTMLImageElement, width: number, height: number): string {
+    // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 是离屏渲染，不挂 DOM
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -487,22 +526,6 @@ function addWhiteBackground(img: HTMLImageElement, width: number, height: number
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0);
     return canvas.toDataURL("image/png");
-}
-
-/* ===================================================================
- * 工具：Blob → base64 字符串（去掉 data:image/xxx;base64, 前缀）
- * =================================================================== */
-async function blobToBase64(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const result = reader.result as string;
-            const idx = result.indexOf(",");
-            resolve(idx >= 0 ? result.slice(idx + 1) : result);
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-    });
 }
 
 /* ===================================================================
@@ -539,7 +562,8 @@ async function testCustomConnection(apiKey: string, baseUrl: string, model: stri
     const base = (baseUrl || "https://api.minimax.chat/v1").trim().replace(/\/+$/, "") || "https://api.minimax.chat/v1";
     const useModel = (model || "").trim() || "MiniMax-M2.7-highspeed";
     try {
-        const res = await fetch(`${base}/chat/completions`, {
+        const res: RequestUrlResponse = await requestUrl({
+            url: `${base}/chat/completions`,
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -550,16 +574,17 @@ async function testCustomConnection(apiKey: string, baseUrl: string, model: stri
                 max_tokens: 4,
                 messages: [{ role: "user", content: "ping" }],
             }),
+            throw: false,
         });
-        if (res.ok) return { ok: true, msg: `已连接 ${base} ✓（模型 ${useModel}）` };
+        if (res.status >= 200 && res.status < 300) return { ok: true, msg: `已连接 ${base} ✓（模型 ${useModel}）` };
         if (res.status === 401) return { ok: false, msg: "API key 无效或过期（401）" };
         if (res.status === 429) return { ok: false, msg: "触发限流（key 有效，等一会儿再试）" };
         if (res.status === 402 || res.status === 403) return { ok: false, msg: "账户欠费或无权限" };
         if (res.status === 404) return { ok: false, msg: `Base URL 或模型不存在（HTTP 404）— 检查 ${base} 是否带 /v1 结尾，或换个模型名` };
-        const text = await res.text();
+        const text = res.text;
         return { ok: false, msg: `HTTP ${res.status}：${text.slice(0, 120)}` };
-    } catch (e: any) {
-        return { ok: false, msg: `网络错误（${base}）：${e?.message || e}` };
+    } catch (e) {
+        return { ok: false, msg: `网络错误（${base}）：${errMsg(e)}` };
     }
 }
 
@@ -573,17 +598,19 @@ async function listCustomModels(apiKey: string, baseUrl: string): Promise<Engine
     if (!apiKey || !apiKey.trim()) return { ok: false, msg: "未填写 API key" };
     const base = (baseUrl || "https://api.minimax.chat/v1").trim().replace(/\/+$/, "") || "https://api.minimax.chat/v1";
     try {
-        const res = await fetch(`${base}/models`, {
+        const res: RequestUrlResponse = await requestUrl({
+            url: `${base}/models`,
             method: "GET",
             headers: { "Authorization": `Bearer ${apiKey.trim()}` },
+            throw: false,
         });
-        if (!res.ok) {
-            const text = await res.text();
+        if (res.status < 200 || res.status >= 300) {
+            const text = res.text;
             if (res.status === 401) return { ok: false, msg: "API key 无效或过期（401）" };
             if (res.status === 404) return { ok: false, msg: `${base} 不支持 /models 端点（HTTP 404）。该服务可能没实现列出模型功能，请查阅其文档` };
             return { ok: false, msg: `HTTP ${res.status}：${text.slice(0, 200)}` };
         }
-        const json = await res.json();
+        const json = res.json;
         const list: string[] = [];
         if (Array.isArray(json?.data)) {
             for (const m of json.data) {
@@ -607,8 +634,8 @@ async function listCustomModels(apiKey: string, baseUrl: string): Promise<Engine
             ok: true,
             msg: `共 ${list.length} 个模型：\n${list.join("\n")}\n${tip}`,
         };
-    } catch (e: any) {
-        return { ok: false, msg: `网络错误（${base}）：${e?.message || e}` };
+    } catch (e) {
+        return { ok: false, msg: `网络错误（${base}）：${errMsg(e)}` };
     }
 }
 
@@ -629,24 +656,26 @@ interface HistoryItem {
 
 class HistoryStore {
     private items: HistoryItem[] = [];
+    private readonly storageKey: string;
 
-    constructor() {
+    constructor(private readonly app: App, storageKey: string = HISTORY_KEY) {
+        this.storageKey = storageKey;
         this.load();
     }
 
     private load() {
         try {
-            const raw = localStorage.getItem(HISTORY_KEY);
+            const raw = this.app.loadLocalStorage(this.storageKey);
             if (raw) this.items = JSON.parse(raw);
-        } catch (_) {
+        } catch {
             this.items = [];
         }
     }
 
     private save() {
         try {
-            localStorage.setItem(HISTORY_KEY, JSON.stringify(this.items.slice(0, MAX_HISTORY)));
-        } catch (_) { /* quota / private mode — ignore */ }
+            this.app.saveLocalStorage(this.storageKey, JSON.stringify(this.items.slice(0, MAX_HISTORY)));
+        } catch { /* quota / private mode — ignore */ }
     }
 
     add(item: HistoryItem) {
@@ -663,7 +692,8 @@ class HistoryStore {
 
     clear() {
         this.items = [];
-        try { localStorage.removeItem(HISTORY_KEY); } catch (_) { /* ignore */ }
+        // saveLocalStorage 没有 remove，用空字符串代替
+        try { this.app.saveLocalStorage(this.storageKey, ""); } catch { /* ignore */ }
     }
 }
 
@@ -691,9 +721,9 @@ async function renderMath(src: string, el: HTMLElement, block: boolean, app: App
         await MarkdownRenderer.render(app, wrapped, el, "", comp);
         // 如果在 await 期间已经触发了新的渲染，丢弃旧结果
         if (seq !== _previewSeq) comp.unload();
-    } catch (e: any) {
+    } catch (e) {
         el.empty();
-        el.createDiv({ cls: "latex-input-preview-error", text: e?.message || "渲染失败" });
+        el.createDiv({ cls: "latex-input-preview-error", text: errMsg(e) || "渲染失败" });
         comp.unload();
     }
 }
@@ -726,6 +756,9 @@ class LaTeXInputModal extends Modal {
     private _suppressInput = false;        // 屏蔽 input 事件：bootstrap 时写初始值期间为 true
     private _lastUserInputAt = 0;          // 最近一次用户在 MathLive 里敲键盘的时间戳（ms）
     private _modalPointerDown: ((e: PointerEvent) => void) | null = null; // 模态 pointerdown 监听器引用（用于 onClose 清理）
+    private _inlineBtn!: HTMLButtonElement;   // 顶栏「行内」按钮（updateModeBtns 用）
+    private _blockBtn!: HTMLButtonElement;    // 顶栏「行间」按钮（updateModeBtns 用）
+    private _pickerOpen = false;              // 防止连点「选择图片」按钮重复打开文件选择器
 
     private pasteHandler = (e: ClipboardEvent) => this.handlePaste(e);
 
@@ -791,7 +824,7 @@ class LaTeXInputModal extends Modal {
             // 用户明确点了历史条目（要让它自己处理）；只对"真正的空白"或非交互元素抢焦点
             if (t.closest(".latex-input-history-item")) return;
             // 异步到当前 click 流程之后执行，避免和别的 listener 抢顺序
-            setTimeout(() => this.focusMathField(), 0);
+            window.setTimeout(() => this.focusMathField(), 0);
         };
         this.contentEl.addEventListener("pointerdown", this._modalPointerDown);
 
@@ -813,7 +846,7 @@ class LaTeXInputModal extends Modal {
         // 加载前显示占位（已通过 HTML 默认渲染）
         try {
             await loadMathLive();
-        } catch (e) {
+        } catch {
             // 内嵌 + CDN 都失败：把 math-field 换成普通 div 走旧版渲染
             this.flashMathLiveStatus("MathLive 加载失败，已切换到只读预览模式", "warn");
             this.hidePlaceholder();
@@ -826,14 +859,14 @@ class LaTeXInputModal extends Modal {
         // 防御：custom element 可能晚于我们的 await 解析而被定义（理论上同步，
         //   但保险起见再等一下），等到了再继续 —— 避免对未 upgrade 的 HTMLElement 调 setOptions
         try {
-            if ((customElements as any).whenDefined) {
-                await (customElements as any).whenDefined("math-field");
-            }
-        } catch (_) { /* ignore */ }
+            // customElements.whenDefined 在 DOM 标准里已 stable，直接调
+            await customElements.whenDefined("math-field");
+        } catch { /* ignore */ }
 
         // MathLive 加载成功：给 math-field 套主题 + 事件
+        const mf = this.mathFieldEl;
+        if (!isMathField(mf)) return;
         try {
-            const mf = this.mathFieldEl as any;
             // 主题：跟随 Obsidian 主题（亮/暗）
             const isDark = document.body.classList.contains("theme-dark");
             if (typeof mf.setOptions === "function") {
@@ -884,7 +917,7 @@ class LaTeXInputModal extends Modal {
             mf.addEventListener("pointerdown", (ev: Event) => {
                 // 不要 preventDefault —— 让 MathLive 自己的 pointerdown handler 跑（它要算光标位置）
                 // 只确保：用户松手之后焦点在 math-field 上
-                setTimeout(() => this.focusMathField(), 0);
+                window.setTimeout(() => this.focusMathField(), 0);
                 void ev;
             });
 
@@ -906,8 +939,8 @@ class LaTeXInputModal extends Modal {
             try {
                 writeMathField(this.mathFieldEl, this.latexBuffer, () => {});
             } finally {
-                // MathLive 内部派发 input 是 setTimeout(0)，我们更晚一点释放屏蔽
-                setTimeout(() => { this._suppressInput = false; }, 50);
+                // MathLive 内部派发 input 是 window.setTimeout(0)，我们更晚一点释放屏蔽
+                window.setTimeout(() => { this._suppressInput = false; }, 50);
             }
         }
         this.updateSource();
@@ -920,9 +953,9 @@ class LaTeXInputModal extends Modal {
         //   50ms  ：覆盖 modal open animation 期间的 focus 抢占
         //   200ms ：兜底（动画慢的机器上）
         this.focusMathField();
-        requestAnimationFrame(() => this.focusMathField());
-        setTimeout(() => this.focusMathField(), 50);
-        setTimeout(() => this.focusMathField(), 200);
+        window.requestAnimationFrame(() => this.focusMathField());
+        window.setTimeout(() => this.focusMathField(), 50);
+        window.setTimeout(() => this.focusMathField(), 200);
     }
 
     /**
@@ -934,14 +967,13 @@ class LaTeXInputModal extends Modal {
         if (!this.mathFieldEl) return;
         // 用户在源码框里编辑时，不要抢焦点
         if (document.activeElement === this.sourceEl) return;
-        const tag = (this.mathFieldEl as any).tagName?.toLowerCase?.();
-        if (tag === "math-field") {
+        if (isMathField(this.mathFieldEl)) {
             try {
-                (this.mathFieldEl as any).focus?.();
-            } catch (_) { /* ignore */ }
+                this.mathFieldEl.focus?.();
+            } catch { /* ignore */ }
         } else {
             // 已降级为普通 div —— 让源码框拿焦点
-            try { this.sourceEl?.focus?.(); } catch (_) { /* ignore */ }
+            try { this.sourceEl?.focus?.(); } catch { /* ignore */ }
         }
     }
 
@@ -950,8 +982,9 @@ class LaTeXInputModal extends Modal {
      */
     private fallbackToPlainPreview() {
         if (!this.mathFieldEl) return;
-        const div = document.createElement("div");
-        div.className = "latex-input-preview";
+        const parent = this.mathFieldEl.parentElement;
+        if (!parent) return;
+        const div = parent.createDiv({ cls: "latex-input-preview" });
         this.mathFieldEl.replaceWith(div);
         this.mathFieldEl = div;
     }
@@ -959,7 +992,7 @@ class LaTeXInputModal extends Modal {
     /** 隐藏加载占位 */
     private hidePlaceholder() {
         if (!this.mathFieldEl) return;
-        const ph = (this.mathFieldEl as any)._placeholder as HTMLElement | undefined;
+        const ph = isMathField(this.mathFieldEl) ? this.mathFieldEl._placeholder : undefined;
         if (ph) ph.classList.add("is-hidden");
     }
 
@@ -968,7 +1001,7 @@ class LaTeXInputModal extends Modal {
         const orig = this.statusEl.textContent;
         this.statusEl.setText(msg);
         this.statusEl.addClass(kind === "warn" ? "is-warn" : "is-flash");
-        setTimeout(() => {
+        window.setTimeout(() => {
             this.statusEl.removeClass("is-flash");
             this.statusEl.removeClass("is-warn");
             this.statusEl.setText(orig || "");
@@ -1018,13 +1051,13 @@ class LaTeXInputModal extends Modal {
             this.latexBuffer = "";
             this.updateSource();
             // 写完之后把焦点送回 MathLive（按钮被点了，焦点跑去 button 上了）
-            setTimeout(() => this.focusMathField(), 0);
+            window.setTimeout(() => this.focusMathField(), 0);
         });
         const exampleBtn = previewTools.createEl("button", { text: "示例", cls: "latex-input-mini-btn" });
         exampleBtn.addEventListener("click", () => {
             this.latexBuffer = "\\frac{1}{2} \\int_{\\frac{\\pi}{2}}^{0} \\cos 2t\\,d(2t)";
             this.updateSource();
-            setTimeout(() => this.focusMathField(), 0);
+            window.setTimeout(() => this.focusMathField(), 0);
         });
 
         // MathLive <math-field> —— 占据原"预览"位置
@@ -1041,7 +1074,7 @@ class LaTeXInputModal extends Modal {
             cls: "latex-input-math-field-placeholder",
             text: "正在加载 MathLive…",
         });
-        (this.mathFieldEl as any)._placeholder = placeholder;
+        if (isMathField(this.mathFieldEl)) this.mathFieldEl._placeholder = placeholder;
 
         // ===== 矩阵/数组行/列操作工具条（光标在矩阵里才生效） =====
         // MathLive 自带 addRowAfter / addRowBefore / removeRow / addColumnAfter / addColumnBefore / removeColumn
@@ -1051,16 +1084,16 @@ class LaTeXInputModal extends Modal {
             const btn = matrixTools.createEl("button", { text: label, cls: "latex-input-mini-btn latex-input-matrix-btn" });
             btn.title = title;
             btn.addEventListener("click", () => {
-                if (!this.mathFieldEl) return;
-                const mf = this.mathFieldEl as any;
+                const mf = this.mathFieldEl;
+                if (!isMathField(mf)) return;
                 if (typeof mf.executeCommand !== "function") return;
                 try {
                     mf.executeCommand(command);
-                } catch (e) {
+                } catch {
                     // executeCommand 在光标不在矩阵里时可能抛错 —— 静默忽略
                 }
                 // 按钮被点了会抢焦点，操作完把焦点送回 MathLive
-                setTimeout(() => this.focusMathField(), 0);
+                window.setTimeout(() => this.focusMathField(), 0);
             });
             return btn;
         };
@@ -1076,10 +1109,6 @@ class LaTeXInputModal extends Modal {
         const sourceHeader = this.sourceWrapEl.createDiv({ cls: "latex-input-section-header" });
         const sourceLabel = sourceHeader.createDiv({ cls: "latex-input-section-label" });
         sourceLabel.setText("LaTeX 源码（同步）");
-        const sourceNote = sourceHeader.createDiv({
-            cls: "latex-input-source-note",
-            text: "与 MathLive 双向同步，编辑后会自动反映到公式区",
-        });
 
         this.sourceEl = this.sourceWrapEl.createEl("textarea", { cls: "latex-input-source" });
         this.sourceEl.spellcheck = false;
@@ -1107,11 +1136,12 @@ class LaTeXInputModal extends Modal {
         const histTools = historyWrap.createDiv({ cls: "latex-input-history-tools" });
         const clearHistBtn = histTools.createEl("button", { text: "清空历史", cls: "latex-input-mini-btn" });
         clearHistBtn.addEventListener("click", () => {
-            if (confirm("清空全部历史记录？")) {
+            new ConfirmModal(this.app, "清空全部历史记录？").openAndWait().then((ok) => {
+                if (!ok) return;
                 this.history.clear();
                 this.renderHistory();
                 this.flashStatus("已清空历史 ✓");
-            }
+            });
         });
 
         // 焦点交给 MathLive —— 延迟到 MathLive 加载完成后再 focus
@@ -1124,7 +1154,7 @@ class LaTeXInputModal extends Modal {
         this.toggleSourceBtn.toggleClass("is-active", this.sourceVisible);
         if (this.sourceVisible) {
             this.sourceEl.value = this.latexBuffer;
-            setTimeout(() => this.sourceEl.focus(), 0);
+            window.setTimeout(() => this.sourceEl.focus(), 0);
         }
     }
 
@@ -1135,19 +1165,19 @@ class LaTeXInputModal extends Modal {
      */
     private syncMathFieldFromBuffer() {
         if (!this.mathFieldEl) return;
-        if (isMathLiveLoaded() && (this.mathFieldEl as any).tagName?.toLowerCase() === "math-field") {
+        if (isMathLiveLoaded() && isMathField(this.mathFieldEl)) {
             // 关键优化：如果新值和 MathLive 当前值一样，跳过写入。
             //   原因：mf.value = ... 会触发 setValue（insertionMode: "replaceAll"），
             //   整段重写 model 会把光标 / selection 重置。哪怕值没变，光标也会跳。
             //   跳过 no-op 写入就能完美避免"buffer 同步导致光标跳走"。
             //   任何"用户刚敲完键盘，buffer 已经被 input 事件同步过"的场景，都会命中这一行。
             try {
-                const current = (this.mathFieldEl as any).getValue?.("latex") ?? "";
+                const current = this.mathFieldEl.getValue?.("latex") ?? "";
                 if (current === this.latexBuffer) {
                     this.updateStatus();
                     return;
                 }
-            } catch (_) { /* getValue 失败就当没拿到，按正常流程走 */ }
+            } catch { /* getValue 失败就当没拿到，按正常流程走 */ }
 
             // 写之前挂屏蔽标志 —— MathLive 内部会异步派发 input 事件，我们要忽略
             //   （避免 setValue 触发的合成 input 事件再次进入我们的 input handler 引发回环）
@@ -1157,8 +1187,8 @@ class LaTeXInputModal extends Modal {
                     this.renderPreview();
                 });
             } finally {
-                // 50ms 后释放：覆盖 setTimeout(0) 派发 + 微小排程延迟
-                setTimeout(() => { this._suppressInput = false; }, 50);
+                // 50ms 后释放：覆盖 window.setTimeout(0) 派发 + 微小排程延迟
+                window.setTimeout(() => { this._suppressInput = false; }, 50);
             }
         } else {
             this.renderPreview();
@@ -1178,17 +1208,17 @@ class LaTeXInputModal extends Modal {
             this.updateModeBtns();
             this.updateStatus();
             // 优先 focus MathLive（切模式后继续在编辑区里敲键盘）
-            setTimeout(() => this.focusMathField(), 0);
+            window.setTimeout(() => this.focusMathField(), 0);
         });
         const blockBtn = modeGroup.createEl("button", { text: "行间 $$...$$", cls: "latex-input-mode-btn" });
         blockBtn.addEventListener("click", () => {
             this.mode = "block";
             this.updateModeBtns();
             this.updateStatus();
-            setTimeout(() => this.focusMathField(), 0);
+            window.setTimeout(() => this.focusMathField(), 0);
         });
-        (this as any)._inlineBtn = inlineBtn;
-        (this as any)._blockBtn = blockBtn;
+        this._inlineBtn = inlineBtn;
+        this._blockBtn = blockBtn;
         this.updateModeBtns();
 
         // 工具按钮
@@ -1197,12 +1227,12 @@ class LaTeXInputModal extends Modal {
         undoBtn.addEventListener("click", () => this.undo());
 
         const copyBtn = right.createEl("button", { text: "📋 复制", cls: "latex-input-tool-btn" });
-        copyBtn.addEventListener("click", () => this.copyOutput());
+        copyBtn.addEventListener("click", () => { void this.copyOutput(); });
 
         // 截图识别按钮
         this.ocrBtn = right.createEl("button", { text: "📷 截图识别", cls: "latex-input-tool-btn latex-input-tool-btn-ocr" });
         this.ocrBtn.title = "读取剪贴板中的截图，识别为 LaTeX（需先在系统层截图）";
-        this.ocrBtn.addEventListener("click", () => this.recognizeFromClipboard());
+        this.ocrBtn.addEventListener("click", () => { void this.recognizeFromClipboard(); });
         this.ocrBtn.dataset.defaultText = "📷 截图识别";
 
         // 从图片文件选择识别
@@ -1220,8 +1250,8 @@ class LaTeXInputModal extends Modal {
     }
 
     private updateModeBtns() {
-        const inlineBtn = (this as any)._inlineBtn as HTMLButtonElement;
-        const blockBtn = (this as any)._blockBtn as HTMLButtonElement;
+        const inlineBtn = this._inlineBtn;
+        const blockBtn = this._blockBtn;
         if (this.mode === "inline") {
             inlineBtn.addClass("is-active");
             blockBtn.removeClass("is-active");
@@ -1264,7 +1294,7 @@ class LaTeXInputModal extends Modal {
                 // 缩略图条目：用 LaTeX 渲染（用 MarkdownRenderer + Obsidian MathJax）
                 const previewWrap = btn.createDiv({ cls: "latex-input-sym-preview" });
                 // 不 await —— fire-and-forget，UI 不阻塞
-                renderMath(sym.preview, previewWrap, true, this.app);
+                void renderMath(sym.preview, previewWrap, true, this.app);
             } else {
                 btn.textContent = sym.display;
             }
@@ -1286,7 +1316,7 @@ class LaTeXInputModal extends Modal {
 
             const preview = row.createDiv({ cls: "latex-input-history-preview" });
             // 用 Obsidian 内置渲染器（与笔记渲染一致）
-            renderMath(it.src, preview, it.block, this.app);
+            void renderMath(it.src, preview, it.block, this.app);
 
             const meta = row.createDiv({ cls: "latex-input-history-meta" });
             meta.setText(`${it.block ? "$$…$$" : "$…$"} · ${this.formatTime(it.ts)}`);
@@ -1298,7 +1328,7 @@ class LaTeXInputModal extends Modal {
                 this.updateModeBtns();
                 this.updateSource(); // 已经会同步到 MathLive
                 // 载入历史后焦点送回 MathLive，方便用户继续微调
-                setTimeout(() => this.focusMathField(), 0);
+                window.setTimeout(() => this.focusMathField(), 0);
             });
         }
     }
@@ -1314,7 +1344,7 @@ class LaTeXInputModal extends Modal {
         const { text, cursorOffset } = parseInsert(raw);
         // 优先写到 MathLive（光标位置由 MathLive 内部维护）
         // MathLive 未加载时降级：手动操作 buffer + 源码框
-        if (isMathLiveLoaded() && this.mathFieldEl && (this.mathFieldEl as any).tagName?.toLowerCase() === "math-field") {
+        if (isMathLiveLoaded() && isMathField(this.mathFieldEl)) {
             // cursorOffset 在 MathLive 中定位：用 executeCommand('moveTo') 需要坐标
             // 简化做法：先 insert 再尝试定位到 {cursor} 占位符
             insertToMathField(this.mathFieldEl, text, () => this.fallbackInsert(text, cursorOffset));
@@ -1355,14 +1385,14 @@ class LaTeXInputModal extends Modal {
 
     private renderPreview() {
         // 兼容旧路径（MathLive 加载失败时 fallbackToPlainPreview 替换为 div）
-        if (this.mathFieldEl && (this.mathFieldEl as any).tagName?.toLowerCase() === "math-field") {
+        if (isMathField(this.mathFieldEl)) {
             // 正常情况不应该走这里，bootstrapMathField 已接管
             writeMathField(this.mathFieldEl, this.latexBuffer, () => {});
             return;
         }
         // Fallback：旧 div 渲染
         if (this.mathFieldEl) {
-            renderMath(this.latexBuffer, this.mathFieldEl, this.mode === "block", this.app);
+            void renderMath(this.latexBuffer, this.mathFieldEl, this.mode === "block", this.app);
         }
     }
 
@@ -1412,7 +1442,7 @@ class LaTeXInputModal extends Modal {
         try {
             await navigator.clipboard.writeText(out);
             this.flashStatus("已复制到剪贴板 ✓");
-        } catch (_) {
+        } catch {
             // 退化方案
             this.sourceEl.value = out;
             this.sourceEl.select();
@@ -1466,11 +1496,10 @@ class LaTeXInputModal extends Modal {
      */
     private recognizeFromFile() {
         // 防止连点：上一个 dialog 还没关就点第二次
-        if ((this.fileOcrBtn as any)._pickerOpen) return;
-        (this.fileOcrBtn as any)._pickerOpen = true;
+        if (this._pickerOpen) return;
+        this._pickerOpen = true;
 
-        const input = document.createElement("input");
-        input.type = "file";
+        const input = document.body.createEl("input", { type: "file" });
         input.accept = "image/*"; // png/jpg/jpeg/webp/bmp/gif
         input.setCssStyles({
             position: "fixed",
@@ -1483,26 +1512,28 @@ class LaTeXInputModal extends Modal {
         });
 
         const cleanup = () => {
-            (this.fileOcrBtn as any)._pickerOpen = false;
+            this._pickerOpen = false;
             if (input.parentNode) input.parentNode.removeChild(input);
         };
 
         // 选中文件
-        input.addEventListener("change", async () => {
-            const file = input.files && input.files[0];
-            cleanup();
-            if (!file) {
-                this.flashStatus("未选择图片");
-                return;
-            }
-            // File 继承自 Blob，直接复用 OCR 流程
-            await this.runOcr(file, this.fileOcrBtn);
+        input.addEventListener("change", () => {
+            void (async () => {
+                const file = input.files && input.files[0];
+                cleanup();
+                if (!file) {
+                    this.flashStatus("未选择图片");
+                    return;
+                }
+                // File 继承自 Blob，直接复用 OCR 流程
+                await this.runOcr(file, this.fileOcrBtn);
+            })();
         });
 
         // 某些平台（Firefox）支持 cancel 事件；Chromium / Electron 中用户关闭对话框不会触发 change
         // 用 window focus 兜底：dialog 关闭后窗口重新获得焦点
         const onFocusBack = () => {
-            setTimeout(() => {
+            window.setTimeout(() => {
                 // 如果 change 没触发且 input 还在 DOM 里，说明用户取消了
                 if (input.parentNode && (!input.files || input.files.length === 0)) {
                     cleanup();
@@ -1542,15 +1573,15 @@ class LaTeXInputModal extends Modal {
             this.latexBuffer = result.latex;
             this.updateSource();
             // 优先 focus 到 MathLive（用封装好的 focusMathField，回退到源码框）
-            setTimeout(() => this.focusMathField(), 0);
+            window.setTimeout(() => this.focusMathField(), 0);
             const conf = result.confidence !== undefined
                 ? `（置信度 ${(result.confidence * 100).toFixed(1)}%）`
                 : "";
             this.flashStatus(`已识别 ${conf} ✓，可继续编辑或点「插入笔记」`);
-        } catch (e: any) {
+        } catch (e) {
             console.error("[LaTeX Input] OCR failed", e);
-            this.flashStatus(`识别失败：${e?.message || e}`);
-            new Notice(`识别失败：${e?.message || e}`, 10000);
+            this.flashStatus(`识别失败：${errMsg(e)}`);
+            new Notice(`识别失败：${errMsg(e)}`, 10000);
         } finally {
             ocrBtn.disabled = false;
             ocrBtn.textContent = originalText || ocrBtn.dataset.defaultText || "OCR";
@@ -1618,7 +1649,7 @@ class LaTeXInputModal extends Modal {
         const orig = this.statusEl.textContent;
         this.statusEl.setText(msg);
         this.statusEl.addClass("is-flash");
-        setTimeout(() => {
+        window.setTimeout(() => {
             this.statusEl.removeClass("is-flash");
             this.statusEl.setText(orig || "");
         }, 1200);
@@ -1647,7 +1678,7 @@ class ScreenshotOcrSession {
 
     // 鼠标事件 handler 引用（用于清理）
     private hMouseMove = (e: MouseEvent) => this.handleMouseMove(e);
-    private hMouseUp = (e: MouseEvent) => this.handleMouseUp(e);
+    private hMouseUp = (e: MouseEvent) => { void this.handleMouseUp(e); };
     private hKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
     private hStreamEnded = () => {
         new Notice("屏幕共享已结束", 3000);
@@ -1680,7 +1711,7 @@ class ScreenshotOcrSession {
                 10000,
             );
             this.destroy();
-            new QuickOcrSession(this.app, this.settings, this.history, this.editor, this.block).start();
+            void new QuickOcrSession(this.app, this.settings, this.history, this.editor, this.block).start();
             return;
         }
 
@@ -1696,15 +1727,15 @@ class ScreenshotOcrSession {
                 } as MediaTrackConstraints,
                 audio: false,
             });
-        } catch (e: any) {
+        } catch (e) {
             loadingEl.remove();
-            const errName = e?.name || "";
+            const errName = (e instanceof Error ? e.name : "");
 
             // 关键：NotSupportedError 时自动降级到剪贴板轮询
             if (errName === "NotSupportedError") {
                 console.warn("[LaTeX Input] getDisplayMedia NotSupportedError, fallback to clipboard polling");
                 this.destroy();
-                new QuickOcrSession(this.app, this.settings, this.history, this.editor, this.block).start();
+                void new QuickOcrSession(this.app, this.settings, this.history, this.editor, this.block).start();
                 return;
             }
 
@@ -1727,7 +1758,7 @@ class ScreenshotOcrSession {
                 detail = "安全策略阻止";
                 hint = "如果是浏览器版 Obsidian，需要 HTTPS";
             } else {
-                detail = `未知错误：${e?.message || e || errName}`;
+                detail = `未知错误：${errMsg(e) || errName}`;
                 hint = "看控制台（Ctrl+Shift+I）获取详细错误";
             }
             console.error("[LaTeX Input] getDisplayMedia failed:", e);
@@ -1739,8 +1770,8 @@ class ScreenshotOcrSession {
             this.destroy();
             // 也尝试 fallback
             try {
-                new QuickOcrSession(this.app, this.settings, this.history, this.editor, this.block).start();
-            } catch (_) {
+                void new QuickOcrSession(this.app, this.settings, this.history, this.editor, this.block).start();
+            } catch {
                 new Notice("剪贴板轮询模式也启动失败，请用 Ctrl+Shift+R + Win+Shift+S 两步流程", 8000);
             }
             return;
@@ -1837,9 +1868,9 @@ class ScreenshotOcrSession {
                 : result.latex;
             const modeLabel = this.block ? "行间 $$" : "行内 $";
             new Notice(`✓ 已识别并插入（${modeLabel}） ${conf}：${preview}`, 8000);
-        } catch (e: any) {
+        } catch (e) {
             console.error("[LaTeX Input] Screenshot OCR failed", e);
-            new Notice(`识别失败：${e?.message || e}`, 10000);
+            new Notice(`识别失败：${errMsg(e)}`, 10000);
         }
     };
 
@@ -1855,26 +1886,28 @@ class ScreenshotOcrSession {
         if (!this.displayStream) return null;
 
         // 创建 video 元素捕获一帧
+        // eslint-disable-next-line obsidianmd/prefer-create-el — video 元素不进 DOM
         const video = document.createElement("video");
         video.srcObject = this.displayStream;
         video.muted = true;
         video.playsInline = true;
         try {
             await video.play();
-        } catch (_) { /* ignore */ }
+        } catch { /* ignore */ }
 
         // 等到有画面
         await new Promise<void>((resolve) => {
             if (video.readyState >= 2) return resolve();
             video.addEventListener("loadeddata", () => resolve(), { once: true });
             // 兜底：500ms 后强制继续
-            setTimeout(() => resolve(), 500);
+            window.setTimeout(() => resolve(), 500);
         });
 
         const screenW = video.videoWidth || window.screen.width;
         const screenH = video.videoHeight || window.screen.height;
 
         // 画到全屏 canvas
+        // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 离屏渲染
         const fullCanvas = document.createElement("canvas");
         fullCanvas.width = screenW;
         fullCanvas.height = screenH;
@@ -1897,6 +1930,7 @@ class ScreenshotOcrSession {
         if (sw <= 0 || sh <= 0) return null;
 
         // 裁剪
+        // eslint-disable-next-line obsidianmd/prefer-create-el — canvas 离屏渲染
         const cropCanvas = document.createElement("canvas");
         cropCanvas.width = sw;
         cropCanvas.height = sh;
@@ -1921,7 +1955,7 @@ class ScreenshotOcrSession {
         this.destroyed = true;
         this.destroyUI();
         if (this.displayStream) {
-            this.displayStream.getTracks().forEach((t) => t.stop());
+            this.displayStream.getTracks().forEach((t) => { t.stop(); });
             this.displayStream = null;
         }
         this.containerEl.remove();
@@ -1971,7 +2005,7 @@ class QuickOcrSession {
         // 先记下当前剪贴板图片的 hash（用来判断"新"图片）
         try {
             this.lastImageHash = await this.getClipboardImageHash();
-        } catch (_) {
+        } catch {
             this.lastImageHash = "";
         }
 
@@ -1991,7 +2025,7 @@ class QuickOcrSession {
                     }
                 }
             }
-        } catch (_) { /* 无权限或无图片 */ }
+        } catch { /* 无权限或无图片 */ }
         return "";
     }
 
@@ -2003,7 +2037,7 @@ class QuickOcrSession {
                 .map(b => b.toString(16).padStart(2, "0"))
                 .join("")
                 .slice(0, 64);
-        } catch (_) {
+        } catch {
             return `${blob.size}-${blob.type}-${Date.now()}`;
         }
     }
@@ -2101,7 +2135,7 @@ class QuickOcrSession {
 
     /* --------------- 轮询剪贴板 --------------- */
     private startPolling() {
-        this.pollTimer = setInterval(async () => {
+        this.pollTimer = window.setInterval(async () => {
             try {
                 const items = await navigator.clipboard.read();
                 for (const item of items) {
@@ -2117,7 +2151,7 @@ class QuickOcrSession {
                         }
                     }
                 }
-            } catch (_) {
+            } catch {
                 // 忽略错误继续轮询
             }
         }, 300);
@@ -2141,16 +2175,16 @@ class QuickOcrSession {
                 : result.latex;
             const modeLabel = this.block ? "行间 $$" : "行内 $";
             new Notice(`✓ 已识别并插入（${modeLabel}）：${preview}`, 6000);
-        } catch (e: any) {
+        } catch (e) {
             console.error("[LaTeX Input] Quick OCR failed", e);
-            new Notice(`识别失败：${e?.message || e}`, 10000);
+            new Notice(`识别失败：${errMsg(e)}`, 10000);
         }
     }
 
     /* --------------- 清理 --------------- */
     private stop() {
         if (this.pollTimer) {
-            clearInterval(this.pollTimer);
+            window.clearInterval(this.pollTimer);
             this.pollTimer = null;
         }
         this.isActive = false;
@@ -2170,7 +2204,7 @@ class QuickOcrSession {
  * 插件主类
  * =================================================================== */
 export default class LaTeXInputPlugin extends Plugin {
-    private history = new HistoryStore();
+    private history = new HistoryStore(this.app);
     private latexSettings: LaTeXInputSettings = DEFAULT_SETTINGS;
 
     async onload() {
@@ -2178,50 +2212,44 @@ export default class LaTeXInputPlugin extends Plugin {
 
         // 行内公式
         this.addCommand({
-            id: "latex-input-inline",
+            id: "inline",
             name: "插入 LaTeX 公式（行内 $...$）",
-            hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "l" }],
             editorCallback: (editor, _view) => this.openModal(editor, "inline"),
         });
 
         // 行间公式
         this.addCommand({
-            id: "latex-input-block",
+            id: "block",
             name: "插入 LaTeX 公式（行间 $$...$$）",
-            hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "m" }],
             editorCallback: (editor, _view) => this.openModal(editor, "block"),
         });
 
         // 截图识别公式：拖拽选区 → 自动 OCR → 插入（行内，推荐）
         // 一次快捷键完成"截图 + 识别 + 插入"全流程，包成 $...$
         this.addCommand({
-            id: "latex-input-screenshot-ocr",
+            id: "screenshot-ocr",
             name: "📷 截图识别公式（拖拽选区，行内 $...$）",
-            hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "s" }],
             editorCallback: (editor, _view) => this.startScreenshotOcr(editor, false),
         });
 
         // 截图识别公式：行间版本（包成 $$...$$）
         this.addCommand({
-            id: "latex-input-screenshot-ocr-block",
+            id: "screenshot-ocr-block",
             name: "📷 截图识别公式（拖拽选区，行间 $$...$$）",
-            hotkeys: [{ modifiers: ["Alt", "Shift"], key: "s" }],
             editorCallback: (editor, _view) => this.startScreenshotOcr(editor, true),
         });
 
         // 截图识别公式（备选：从剪贴板读图，行内）
         this.addCommand({
-            id: "latex-input-recognize-clipboard",
+            id: "recognize-clipboard",
             name: "📋 截图识别公式（从剪贴板，行内 $...$）",
-            hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "r" }],
             editorCallback: (editor, _view) => this.recognizeFromClipboard(editor, true, false),
         });
 
         // 截图识别公式（备选：从剪贴板读图，行间）
         this.addCommand({
-            id: "latex-input-recognize-clipboard-block",
+            id: "recognize-clipboard-block",
             name: "📋 截图识别公式（从剪贴板，行间 $$...$$）",
-            hotkeys: [{ modifiers: ["Alt", "Shift"], key: "r" }],
             editorCallback: (editor, _view) => this.recognizeFromClipboard(editor, true, true),
         });
 
@@ -2236,7 +2264,7 @@ export default class LaTeXInputPlugin extends Plugin {
         this.addRibbonIcon("image-file", "📷 截图识别公式（拖拽选区，行内）", () => {
             const view = this.app.workspace.getActiveViewOfType(MarkdownView);
             const editor = view?.editor;
-            if (editor) this.startScreenshotOcr(editor, false);
+            if (editor) void this.startScreenshotOcr(editor, false);
         });
 
         // 设置页
@@ -2337,9 +2365,9 @@ export default class LaTeXInputPlugin extends Plugin {
             const conf = result.confidence !== undefined ? `（置信度 ${(result.confidence * 100).toFixed(1)}%）` : "";
             const modeLabel = block ? "行间 $$" : "行内 $";
             new Notice(`已识别并插入（${modeLabel}） ${conf}：${result.latex.slice(0, 60)}${result.latex.length > 60 ? "…" : ""}`, 8000);
-        } catch (e: any) {
+        } catch (e) {
             console.error("[LaTeX Input] OCR failed", e);
-            new Notice(`识别失败：${e?.message || e}`, 10000);
+            new Notice(`识别失败：${errMsg(e)}`, 10000);
             if (openPanelIfFail) {
                 // 打开主面板让用户手动输入
                 this.openModal(editor, block ? "block" : "inline");
@@ -2348,6 +2376,35 @@ export default class LaTeXInputPlugin extends Plugin {
     }
 
     onunload() { /* nothing */ }
+}
+
+
+
+/* ===================================================================
+ * 通用确认对话框（Modal）
+ *   替代浏览器原生 confirm()，避免在 Obsidian 弹原生对话框（体验差）
+ *   用法：await new ConfirmModal(this.app, "确定要清空吗？").openAndWait();
+ * =================================================================== */
+class ConfirmModal extends Modal {
+    constructor(app: App, private message: string, private title = "确认") { super(app); }
+    openAndWait(): Promise<boolean> {
+        return new Promise((resolve) => {
+            this.open();
+            this._resolve = resolve;
+        });
+    }
+    private _resolve: ((v: boolean) => void) | null = null;
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h2", { text: this.title });
+        contentEl.createEl("p", { text: this.message });
+        const buttonRow = contentEl.createDiv({ cls: "modal-button-container" });
+        const cancelBtn = buttonRow.createEl("button", { text: "取消" });
+        const okBtn = buttonRow.createEl("button", { text: "确定", cls: "mod-cta" });
+        cancelBtn.addEventListener("click", () => { this._resolve?.(false); this.close(); });
+        okBtn.addEventListener("click", () => { this._resolve?.(true); this.close(); });
+    }
 }
 
 /* ===================================================================
@@ -2387,7 +2444,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
 
         new Setting(section)
             .setName("快捷键")
-            .setDesc("默认：Ctrl+Shift+L（行内公式）、Ctrl+Shift+M（行间公式）、Ctrl+Shift+S（截图识别）。如需修改请在 Obsidian「设置 → 快捷键」中搜索「LaTeX Input」重新绑定。")
+            .setDesc("共 6 个命令（行内 / 行间公式、截图识别行内 / 行间、剪贴板识别行内 / 行间）。默认无快捷键 —— 避免与你的其它热键冲突。请在 Obsidian「设置 → 快捷键」中搜索「LaTeX Input」自行绑定。")
             .addButton(btn => btn.setButtonText("打开快捷键设置").onClick(() => {
                 // @ts-ignore
                 this.app.setting.open();
@@ -2408,10 +2465,8 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         // 升级提示横幅（仅当检测到旧字段迁移时显示一次，新启动就消失）
         // 这里用一个 always-shown 的小提示说明默认是 MiniMax
         const banner = section.createDiv({ cls: "latex-input-info-box" });
-        banner.createEl("div", {
-            text: "💡 默认使用 MiniMax 视觉 API（OpenAI 兼容协议），可改成任意兼容服务",
-            cls: "latex-input-info-box-title",
-        });
+        const bannerTitle = banner.createDiv({ cls: "latex-input-info-box-title" });
+        bannerTitle.setText("💡 默认使用 MiniMax 视觉 API（OpenAI 兼容协议），可改成任意兼容服务");
         const ul = banner.createEl("ul");
         ul.createEl("li", { text: "月之暗面 Kimi（视觉版本）：https://api.moonshot.cn/v1" });
         ul.createEl("li", { text: "智谱 GLM-4V：https://open.bigmodel.cn/api/paas/v4" });
@@ -2462,11 +2517,13 @@ class LaTeXInputSettingTab extends PluginSettingTab {
             attr: { placeholder: "https://api.minimax.chat/v1", spellcheck: "false" },
         });
         baseUrlInput.value = settings.customBaseUrl || DEFAULT_SETTINGS.customBaseUrl;
-        baseUrlInput.addEventListener("change", async () => {
-            const v = baseUrlInput.value.trim() || DEFAULT_SETTINGS.customBaseUrl;
-            settings.customBaseUrl = v;
-            baseUrlInput.value = v;
-            await this.plugin.saveSettings();
+        baseUrlInput.addEventListener("change", () => {
+            void (async () => {
+                const v = baseUrlInput.value.trim() || DEFAULT_SETTINGS.customBaseUrl;
+                settings.customBaseUrl = v;
+                baseUrlInput.value = v;
+                await this.plugin.saveSettings();
+            })();
         });
 
         // 2) API Key
@@ -2489,9 +2546,11 @@ class LaTeXInputSettingTab extends PluginSettingTab {
             attr: { placeholder: "如：MiniMax-...-VL / gpt-4o / claude-3.5-sonnet", spellcheck: "false" },
         });
         modelInput.value = settings.customModel || "";
-        modelInput.addEventListener("change", async () => {
-            settings.customModel = modelInput.value.trim() || DEFAULT_SETTINGS.customModel;
-            await this.plugin.saveSettings();
+        modelInput.addEventListener("change", () => {
+            void (async () => {
+                settings.customModel = modelInput.value.trim() || DEFAULT_SETTINGS.customModel;
+                await this.plugin.saveSettings();
+            })();
         });
 
         // 4) 操作行
@@ -2514,21 +2573,21 @@ class LaTeXInputSettingTab extends PluginSettingTab {
                 this.showTestResult(resultEl, r);
             }))
             .addButton(btn => btn.setButtonText("↺ 恢复默认").onClick(async () => {
-                if (confirm("恢复 Base URL + 模型名为默认（MiniMax），API Key 保留？")) {
-                    settings.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
-                    settings.customModel = DEFAULT_SETTINGS.customModel;
-                    await this.plugin.saveSettings();
-                    this.display();
-                }
+                const ok = await new ConfirmModal(this.app, "恢复 Base URL + 模型名为默认（MiniMax），API Key 保留？").openAndWait();
+                if (!ok) return;
+                settings.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
+                settings.customModel = DEFAULT_SETTINGS.customModel;
+                await this.plugin.saveSettings();
+                this.display();
             }))
-            .addButton(btn => btn.setButtonText("🗑 清空凭据").setWarning().onClick(async () => {
-                if (confirm("清空 API Key / Base URL / 模型名？")) {
-                    settings.customApiKey = "";
-                    settings.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
-                    settings.customModel = DEFAULT_SETTINGS.customModel;
-                    await this.plugin.saveSettings();
-                    this.display();
-                }
+            .addButton(btn => btn.setButtonText("🗑 清空凭据").setDestructive().onClick(async () => {
+                const ok = await new ConfirmModal(this.app, "清空 API Key / Base URL / 模型名？").openAndWait();
+                if (!ok) return;
+                settings.customApiKey = "";
+                settings.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
+                settings.customModel = DEFAULT_SETTINGS.customModel;
+                await this.plugin.saveSettings();
+                this.display();
             }));
 
         // 怎么用（折叠 info）
@@ -2557,25 +2616,26 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         new Setting(section)
             .setName("清空全部凭据")
             .setDesc("把 API Key 清空（Base URL 和模型名恢复默认）。下次截图识别前需要重新配置。")
-            .addButton(btn => btn.setButtonText("清空全部凭据").setWarning().onClick(async () => {
-                if (confirm("确定清空所有凭据？此操作不可撤销。")) {
-                    const s = this.plugin.getSettings();
-                    s.customApiKey = "";
-                    s.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
-                    s.customModel = DEFAULT_SETTINGS.customModel;
-                    await this.plugin.saveSettings();
-                    this.display();
-                }
+            .addButton(btn => btn.setButtonText("清空全部凭据").setDestructive().onClick(async () => {
+                const ok = await new ConfirmModal(this.app, "确定清空所有凭据？此操作不可撤销。").openAndWait();
+                if (!ok) return;
+                const s = this.plugin.getSettings();
+                s.customApiKey = "";
+                s.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
+                s.customModel = DEFAULT_SETTINGS.customModel;
+                await this.plugin.saveSettings();
+                this.display();
             }));
 
         new Setting(section)
             .setName("清空输入历史")
             .setDesc("清空主面板右侧「历史记录」里的全部条目。")
-            .addButton(btn => btn.setButtonText("清空历史").setWarning().onClick(() => {
-                if (confirm("清空全部历史记录？")) {
-                    try { localStorage.removeItem("latex-input.history.v1"); } catch (_) { /* ignore */ }
+            .addButton(btn => btn.setButtonText("清空历史").setDestructive().onClick(() => {
+                new ConfirmModal(this.app, "清空全部历史记录？").openAndWait().then((ok) => {
+                    if (!ok) return;
+                    try { this.app.saveLocalStorage("latex-input.history.v1", ""); } catch { /* ignore */ }
                     new Notice("历史已清空 ✓");
-                }
+                });
             }));
     }
 
@@ -2588,14 +2648,10 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         const top = card.createDiv({ cls: "latex-input-about-row" });
         top.createEl("strong", { text: "LaTeX Input" });
         top.createSpan({ text: "  v0.1.0", cls: "latex-input-about-version" });
-        card.createEl("div", {
-            text: "AxMath 风格的公式输入面板 + 截图识别",
-            cls: "latex-input-about-desc",
-        });
-        card.createEl("div", {
-            text: "作者 Sun · GPL-3.0 协议",
-            cls: "latex-input-about-meta",
-        });
+        const aboutDesc = card.createDiv({ cls: "latex-input-about-desc" });
+        aboutDesc.setText("AxMath 风格的公式输入面板 + 截图识别");
+        const aboutMeta = card.createDiv({ cls: "latex-input-about-meta" });
+        aboutMeta.setText("作者 Sun · GPL-3.0 协议");
     }
 
     /* ============== 通用辅助 ============== */
@@ -2629,13 +2685,13 @@ class LaTeXInputSettingTab extends PluginSettingTab {
 
         let saveTimer: any = null;
         const debouncedSave = () => {
-            if (saveTimer) clearTimeout(saveTimer);
-            saveTimer = setTimeout(() => onChange(input.value), 400);
+            if (saveTimer) window.clearTimeout(saveTimer);
+            saveTimer = window.setTimeout(() => onChange(input.value), 400);
         };
         input.addEventListener("input", debouncedSave);
         input.addEventListener("change", () => {
-            if (saveTimer) clearTimeout(saveTimer);
-            onChange(input.value);
+            if (saveTimer) window.clearTimeout(saveTimer);
+            void onChange(input.value);
         });
     }
 
@@ -2652,13 +2708,13 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         input.value = value;
         let timer: any = null;
         const debouncedSave = () => {
-            if (timer) clearTimeout(timer);
-            timer = setTimeout(() => onChange(input.value), 400);
+            if (timer) window.clearTimeout(timer);
+            timer = window.setTimeout(() => onChange(input.value), 400);
         };
         input.addEventListener("input", debouncedSave);
         input.addEventListener("change", () => {
-            if (timer) clearTimeout(timer);
-            onChange(input.value);
+            if (timer) window.clearTimeout(timer);
+            void onChange(input.value);
         });
     }
 
@@ -2678,7 +2734,8 @@ class LaTeXInputSettingTab extends PluginSettingTab {
     /** 顶部对齐、醒目的提示框（用于"截图识别用法"等） */
     private makeInfoBox(parent: HTMLElement, title: string, items: string[]) {
         const box = parent.createDiv({ cls: "latex-input-info-box" });
-        box.createEl("div", { text: title, cls: "latex-input-info-box-title" });
+        const infoTitle = box.createDiv({ cls: "latex-input-info-box-title" });
+        infoTitle.setText(title);
         const ol = box.createEl("ol");
         for (const it of items) ol.createEl("li", { text: it });
     }
@@ -2686,7 +2743,6 @@ class LaTeXInputSettingTab extends PluginSettingTab {
     /** 引擎卡内嵌的折叠 info（用原生 <details>） */
     private makeCollapsibleInfo(parent: HTMLElement, title: string, items: string[]) {
         const det = parent.createEl("details", { cls: "latex-input-details" });
-        const sum = det.createEl("summary", { text: title });
         const ol = det.createEl("ol");
         for (const it of items) ol.createEl("li", { text: it });
     }
