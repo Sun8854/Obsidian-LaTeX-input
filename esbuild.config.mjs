@@ -22,12 +22,24 @@ const mathliveVirtualPlugin = {
       namespace: "mathlive-virt",
     }));
     build.onLoad({ filter: /.*/, namespace: "mathlive-virt" }, async () => {
-      const contents = await readFile(resolve("vendor/mathlive.min.js"), "utf8");
-      // loader: 'js' —— esbuild 把内容当 JS 解析并 bundle；UMD 的
-      //   `typeof exports === 'object' ? factory(exports) : ...` 分支
-      //   在 CJS 上下文里命中第一条，MathLive 被挂到当前模块的 exports，
-      //   同时 factory 内部的 customElements.define(...) 副作用会立即执行。
-      return { contents, loader: "js" };
+      try {
+        const contents = await readFile(resolve("vendor/mathlive.min.js"), "utf8");
+        // loader: 'js' —— esbuild 把内容当 JS 解析并 bundle；UMD 的
+        //   `typeof exports === 'object' ? factory(exports) : ...` 分支
+        //   在 CJS 上下文里命中第一条，MathLive 被挂到当前模块的 exports，
+        //   同时 factory 内部的 customElements.define(...) 副作用会立即执行。
+        return { contents, loader: "js" };
+      } catch (e) {
+        if (e && e.code === "ENOENT") {
+          throw new Error(
+            "vendor/mathlive.min.js 缺失。\n" +
+              "首次构建前请运行：npm install（会自动触发 postinstall 恢复 vendor/）\n" +
+              "或手动：npm run restore-vendor\n" +
+              "或：npm i mathlive@0.103.0 && cp node_modules/mathlive/dist/mathlive.min.js vendor/mathlive.min.js"
+          );
+        }
+        throw e;
+      }
     });
   },
 };
