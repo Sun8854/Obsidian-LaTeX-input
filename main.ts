@@ -1471,16 +1471,31 @@ class LaTeXInputModal extends Modal {
     private async copyOutput() {
         const out = this.getWrappedOutput();
         if (!out) return;
+        // 首选：async clipboard API
         try {
             await navigator.clipboard.writeText(out);
             this.flashStatus("已复制到剪贴板 ✓");
+            return;
         } catch {
-            // 退化方案
+            // 退化方案：fallback 到 textarea + 同步 select()，
+            //   现代 Electron 中 navigator.clipboard 通常已可用，
+            //   走到这一步通常是非安全上下文 / 权限被拒。
             this.sourceEl.value = out;
             this.sourceEl.select();
-            document.execCommand("copy");
-            this.sourceEl.value = this.latexBuffer;
-            this.flashStatus("已复制（fallback）");
+            // 注意：document.execCommand("copy") 在 Electron 32+ 已移除，
+            //   旧路径只作最后保险；失败时不静默吞错。
+            try {
+                const ok = document.execCommand("copy");
+                if (!ok) throw new Error("execCommand returned false");
+                this.flashStatus("已复制（fallback execCommand）");
+            } catch {
+                // 终极退化：让 textarea 保留选中状态，用户自己 Cmd/Ctrl+C
+                this.flashStatus("复制失败 — 内容已选中，请按 Cmd/Ctrl+C 手动复制");
+            } finally {
+                // 不立即清空 buffer，留给用户手动复制的机会
+                //   下一次 copyOutput 会覆盖 value
+            }
+            return;
         }
     }
 
