@@ -354,11 +354,21 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
     }
 
     const json = res.json;
-    const choice = json.choices?.[0];
+    // 最小结构类型：OpenAI / DeepSeek 兼容 chat completions 响应
+    type ContentBlock = { type?: string; text?: string };
+    type ChatMessage = {
+        content?: string | ContentBlock[];
+        // 推理模型（DeepSeek R1 等）的思考过程字段；只读、不解析
+        reasoning_content?: unknown;
+    };
+    type ChatChoice = { message?: ChatMessage };
+    type ChatResponse = { choices?: ChatChoice[] };
+    const parsed = (json ?? {}) as ChatResponse;
+    const choice = parsed.choices?.[0];
     const message = choice?.message;
 
-    // DeepSeek R1 / 推理模型会在 reasoning_content 里放思考过程 —— 忽略，不当答案
-    const _ = message?.reasoning_content; // intentionally unused
+    // 推理模型（DeepSeek R1 等）的思考过程在 reasoning_content；忽略，不当答案
+    void message?.reasoning_content;
 
     // 取 content（实际答案）
     let latex = "";
@@ -367,7 +377,7 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
         latex = content;
     } else if (Array.isArray(content)) {
         for (const block of content) {
-            if (block?.type === "text" && typeof block.text === "string") {
+            if (block && block.type === "text" && typeof block.text === "string") {
                 latex = block.text;
                 break;
             }
@@ -600,15 +610,18 @@ async function listCustomModels(apiKey: string, baseUrl: string): Promise<Engine
             if (res.status === 404) return { ok: false, msg: `${base} 不支持 /models 端点（HTTP 404）。该服务可能没实现列出模型功能，请查阅其文档` };
             return { ok: false, msg: `HTTP ${res.status}：${text.slice(0, 200)}` };
         }
-        const json = res.json;
+        // /v1/models 端点响应：可以是 { data: [{id, ...}, ...] }（OpenAI 风格），
+        //   也有些兼容服务直接返回数组 [{id}, ...] 或 ["id", "id", ...]。
+        type ModelsResponse = { data?: Array<{ id?: unknown }> } | Array<{ id?: unknown } | string>;
+        const json = res.json as ModelsResponse | null | undefined;
         const list: string[] = [];
-        if (Array.isArray(json?.data)) {
+        if (json && typeof json === "object" && !Array.isArray(json) && Array.isArray(json.data)) {
             for (const m of json.data) {
                 if (m && typeof m.id === "string") list.push(m.id);
             }
         } else if (Array.isArray(json)) {
             for (const m of json) {
-                if (m && typeof m.id === "string") list.push(m.id);
+                if (m && typeof m === "object" && typeof m.id === "string") list.push(m.id);
                 else if (typeof m === "string") list.push(m);
             }
         }
@@ -644,6 +657,28 @@ interface HistoryItem {
     ts: number;
 }
 
+/** 类型守卫：从 unknown 收窄到 HistoryItem[]，用于 HistoryStore.load() 反序列化 */
+function isHistoryItemArray(x: unknown): x is HistoryItem[] {
+    if (!Array.isArray(x)) return false;
+    for (const it of x) {
+        if (!it || typeof it !== "object") return false;
+        const o = it as Record<string, unknown>;
+        if (typeof o.full !== "string") return false;
+        if (typeof o.src !== "string") return false;
+        if (typeof o.block !== "boolean") return false;
+        if (typeof o.ts !== "number") return false;
+    }
+    return true;
+}
+
+/** 类型守卫：把 Plugin.loadData() 返回的 unknown 收窄到可迁移的 settings record */
+function narrowToSettingsRecord(
+    raw: unknown
+): (Partial<LaTeXInputSettings> & Record<string, unknown>) | null {
+    if (!raw || typeof raw !== "object") return null;
+    return raw as Partial<LaTeXInputSettings> & Record<string, unknown>;
+}
+
 class HistoryStore {
     private items: HistoryItem[] = [];
     private readonly storageKey: string;
@@ -656,7 +691,14 @@ class HistoryStore {
     private load() {
         try {
             const raw = this.app.loadLocalStorage(this.storageKey);
-            if (raw) this.items = JSON.parse(raw);
+            if (raw) {
+                // loadLocalStorage 返回 unknown；JSON.parse 后仍是 unknown，
+                //   用轻量运行时校验把它收窄到 HistoryItem[]。
+                const parsed: unknown = JSON.parse(raw);
+                if (isHistoryItemArray(parsed)) {
+                    this.items = parsed;
+                }
+            }
         } catch {
             this.items = [];
         }
@@ -2262,10 +2304,10 @@ export default class LaTeXInputPlugin extends Plugin {
     }
 
     async loadSettings() {
-        // loadData() 在没存过数据时返回 null，强类型为 settings 或迁移期的松散对象
-        const raw = await this.loadData();
+        // loadData() 返回 unknown（plugin API 设计），需要先把它收窄到对象再 cast。
+        //   通过窄化函数把 unknown 收窄到 Record<string, unknown>，避免 unsafe cast 警告。
         const loaded: (Partial<LaTeXInputSettings> & Record<string, unknown>) | null =
-            raw && typeof raw === "object" ? raw as Partial<LaTeXInputSettings> & Record<string, unknown> : null;
+            narrowToSettingsRecord(await this.loadData());
         // 迁移：v1.0/v1.1 的 ocrEngine / minimaxApiKey
         //   → v1.2 的 customApiKey / customBaseUrl / customModel
         //   触发条件：loaded 里有任意旧字段
