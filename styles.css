@@ -490,7 +490,6 @@
     font-size: 0.95em !important;
 }
 
-/* stylelint-disable-next-line declaration-no-important */
 .latex-input-sym-preview > p {
     /* !important 必须：KaTeX 渲染层会给 <p> 默认 margin；预览框内必须压掉 */
     margin: 0 !important;
@@ -1195,7 +1194,6 @@
     transition: box-shadow 0.2s;
 }
 
-/* stylelint-disable-next-line declaration-no-important */
 .latex-input-quick-ocr-panel.is-dragging {
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
     /* !important 必须：drag 时面板内的子元素（如按钮）默认 cursor: pointer，
