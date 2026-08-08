@@ -5,6 +5,11 @@
 # Build artifact (MathLive bundle) — generated, not hand-edited
 main.js binary
 
+# Obsidian plugin manifest.json — strip UTF-8 BOM at checkout.
+# Defense against editors (e.g. Windows 记事本, PowerShell Set-Content -Encoding UTF8)
+# that re-introduce BOM every time the file is touched.
+manifest.json working-tree-encoding=UTF-8 text eol=lf
+
 # Common binary types
 *.png binary
 *.jpg binary
