@@ -1485,6 +1485,9 @@ class LaTeXInputModal extends Modal {
             // 注意：document.execCommand("copy") 在 Electron 32+ 已移除，
             //   旧路径只作最后保险；失败时不静默吞错。
             try {
+                // F3 三层退化的最后保险 (commit cd5c2a2). document.execCommand 已 deprecated
+                //   是浏览器平台行为, 与项目代码无关 — 现代 Electron 32+ 已移除这条路径,
+                //   只有非安全上下文 / clipboard 权限被拒才会走到这里. 失败时不静默吞错.
                 const ok = document.execCommand("copy");
                 if (!ok) throw new Error("execCommand returned false");
                 this.flashStatus("已复制（fallback execCommand）");
@@ -2473,7 +2476,10 @@ class LaTeXInputSettingTab extends PluginSettingTab {
 
     /**
      * Obsidian 1.13+ 的声明式 settings API —— 当前返回 []，让 display() 接管渲染。
-     *   原因：minAppVersion 1.10.0，老版本 Obsidian 没有声明式渲染支持。
+     *   原因：minAppVersion 1.10.0 (manifest.json), 老版本 Obsidian 没有声明式渲染支持,
+     *   必须保留 display() 作为兼容路径. obsidian.d.ts 把 display() 标了 @deprecated
+     *   Since 1.13.0, 这是 IDE 层提示而非 tsc error (tsc --noEmit 不报). 三处调用
+     *   (renderOcrSection / renderAdvancedSection) 的 IDE recommendation 是预期的.
      *   副作用：1.13+ 用户的设置搜索框搜不到我们的字段（但 display() 渲染的 UI 还在）。
      *   后续如要让搜索生效，minAppVersion 升到 1.13.0 + 把这个方法改成返回非空 definitions 即可。
      */
@@ -2481,7 +2487,11 @@ class LaTeXInputSettingTab extends PluginSettingTab {
         return [];
     }
 
-    /* ============== display() —— 1.10.x 兼容路径 ============== */
+    /* ============== display() —— 1.10.x 兼容路径 ==============
+     * @deprecated 是 obsidian.d.ts 标的, 因为 1.13.0 起推荐 getSettingDefinitions.
+     *   本插件保留此方法 — 见上方 getSettingDefinitions 覆盖的说明.
+     *   minAppVersion 没升到 1.13.0 之前不能删 (参考 manifest.json).
+     */
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
@@ -2636,6 +2646,9 @@ class LaTeXInputSettingTab extends PluginSettingTab {
                 settings.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
                 settings.customModel = DEFAULT_SETTINGS.customModel;
                 await this.plugin.saveSettings();
+                // display() 在 obsidian.d.ts 里被标 @deprecated Since 1.13.0,
+                //   是因为 1.13+ 改用 getSettingDefinitions. 本插件 minAppVersion=1.10.0,
+                //   见上方 getSettingDefinitions 覆盖和 display() 的 JSDoc.
                 this.display();
             }))
             .addButton(btn => btn.setButtonText("🗑 清空凭据").setClass("mod-warning").onClick(async () => {
@@ -2645,6 +2658,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
                 settings.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
                 settings.customModel = DEFAULT_SETTINGS.customModel;
                 await this.plugin.saveSettings();
+                // display() — 同上, < 1.13 兼容路径 (见类级 getSettingDefinitions).
                 this.display();
             }));
 
@@ -2681,6 +2695,7 @@ class LaTeXInputSettingTab extends PluginSettingTab {
                 s.customBaseUrl = DEFAULT_SETTINGS.customBaseUrl;
                 s.customModel = DEFAULT_SETTINGS.customModel;
                 await this.plugin.saveSettings();
+                // display() — 同上, < 1.13 兼容路径 (见类级 getSettingDefinitions).
                 this.display();
             }));
 
