@@ -353,7 +353,6 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
         throw new Error(`API ${res.status}：${text.slice(0, 200)}`);
     }
 
-    const json = res.json;
     // 最小结构类型：OpenAI / DeepSeek 兼容 chat completions 响应
     type ContentBlock = { type?: string; text?: string };
     type ChatMessage = {
@@ -363,7 +362,9 @@ async function callCustomOCR(apiKey: string, baseUrl: string, model: string, use
     };
     type ChatChoice = { message?: ChatMessage };
     type ChatResponse = { choices?: ChatChoice[] };
-    const parsed = (json ?? {}) as ChatResponse;
+    // res.json 是 any —— 直接 cast 到 ChatResponse，避免 intermediate const 触发
+    //   @typescript-eslint/no-unsafe-assignment（见 listCustomModels 同款处理）。
+    const parsed = (res.json ?? {}) as ChatResponse;
     const choice = parsed.choices?.[0];
     const message = choice?.message;
 
@@ -690,10 +691,10 @@ class HistoryStore {
 
     private load() {
         try {
-            const raw = this.app.loadLocalStorage(this.storageKey);
+            const raw = this.app.loadLocalStorage(this.storageKey) as string | null;
             if (raw) {
-                // loadLocalStorage 返回 unknown；JSON.parse 后仍是 unknown，
-                //   用轻量运行时校验把它收窄到 HistoryItem[]。
+                // loadLocalStorage 返回 any | null —— cast 到 string | null 后 if(raw) 把 raw 收窄到 string，
+                //   JSON.parse(raw) 不再触发 @typescript-eslint/no-unsafe-argument。
                 const parsed: unknown = JSON.parse(raw);
                 if (isHistoryItemArray(parsed)) {
                     this.items = parsed;
